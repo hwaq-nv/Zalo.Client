@@ -1,10 +1,10 @@
-import { ContactList } from "@/app/contact/components/contact-list"
-import { AccountList } from "@/app/profile/components/account-list"
+import { ContactList } from "@/app/contact/components/list/contact-list"
+import { AccountList } from "@/app/profile/components/list/account-list"
 import { useUiStore } from "@/shared/stores/ui.store"
 import { cn } from "@/shared/utils/shadcn"
-import { ThreadList } from "./thread-list"
+import { ThreadList } from "@/shared/components/layouts/sidebar/thread-list"
 
-export function Sidebar({ className }: { className?: string }) {
+export const Sidebar = ({ className }: { className?: string }) => {
   const tab = useUiStore((s) => s.tab)
 
   return (

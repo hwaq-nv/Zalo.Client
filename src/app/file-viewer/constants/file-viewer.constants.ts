@@ -47,9 +47,10 @@ export const FILE_ICONS: Record<FileType, LucideIcon> = {
   unknown: File,
 }
 
-export const TEXT_LIMIT = 1024 * 1024
-// ponytail: bảng chỉ đọc 1000 dòng đầu mỗi sheet; cần hơn thì dùng virtua
-export const SHEET_ROWS = 1000
+export const MAX_TEXT_SIZE = 1024 * 1024
+// bảng chỉ đọc 1000 dòng đầu mỗi sheet; cần hơn thì dùng virtua
+export const MAX_SHEET_ROWS = 1000
 export const ZOOM_MIN = 0.25
 export const ZOOM_MAX = 4
 export const ZOOM_STEP = 1.25
+export const ZOOMABLE_TYPES = new Set(["image", "pdf", "docx"])

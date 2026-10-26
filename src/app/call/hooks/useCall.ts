@@ -1,9 +1,9 @@
 import { skipToken, useMutation, useQuery } from "@tanstack/react-query"
 import type { GroupCallMembers } from "@/shared/types"
 import { api } from "@/core/http/api"
-import { qk } from "@/shared/constants/api.constants"
+import { queryKeys } from "@/shared/constants/api.constants"
 import type { StartCallRequest } from "@/app/call/models/call.model"
-import { showEnded } from "@/app/call/services/call.service"
+import { showCallEndedToast } from "@/app/call/services/call.service"
 
 export const useStartCall = () =>
   useMutation({
@@ -13,11 +13,11 @@ export const useStartCall = () =>
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ threadId: thread.id, video, members }),
       }),
-    onError: (e, { thread }) => showEnded(thread.name ?? thread.id, `Không gọi được: ${e.message}`),
+    onError: (e, { thread }) => showCallEndedToast(thread.name ?? thread.id, `Không gọi được: ${e.message}`),
   })
 
 export const useGroupCallMembers = (accountId: string, groupId?: string) =>
   useQuery({
-    queryKey: qk.groupCallMembers(accountId, groupId ?? ""),
+    queryKey: queryKeys.groupCallMembers(accountId, groupId ?? ""),
     queryFn: groupId ? () => api<GroupCallMembers>(`/calls/${accountId}/groups/${groupId}/members`) : skipToken,
   })

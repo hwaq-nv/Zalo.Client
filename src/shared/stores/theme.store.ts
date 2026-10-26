@@ -22,16 +22,16 @@ export const useThemeStore = create<ThemeState>()(
   ),
 )
 
-const media = matchMedia("(prefers-color-scheme: dark)")
+const darkModeQuery = matchMedia("(prefers-color-scheme: dark)")
 
-function apply() {
+function applyTheme() {
   const { theme, fontSize } = useThemeStore.getState()
-  document.documentElement.classList.toggle("dark", theme === "dark" || (theme === "system" && media.matches))
+  document.documentElement.classList.toggle("dark", theme === "dark" || (theme === "system" && darkModeQuery.matches))
   document.documentElement.style.fontSize = `${fontSize}px`
 }
 
 export function initTheme() {
-  apply()
-  useThemeStore.subscribe(apply)
-  media.addEventListener("change", apply)
+  applyTheme()
+  useThemeStore.subscribe(applyTheme)
+  darkModeQuery.addEventListener("change", applyTheme)
 }

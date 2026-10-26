@@ -1,6 +1,6 @@
 import type { Hono } from 'hono'
-import { requestLog } from '../middlewares/request-log.middleware'
+import { requestLogger } from '../middlewares/request-logger.middleware'
 
 export const useLogger = (app: Hono) => {
-  app.use(requestLog)
+  app.use(requestLogger)
 }

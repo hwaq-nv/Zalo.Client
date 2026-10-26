@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react"
 import { Layers, Search, TriangleAlert } from "lucide-react"
-import { AccountAvatar } from "@/app/profile/components/account-avatar"
+import { AccountAvatar } from "@/app/profile/components/avatar/account-avatar"
 import { useAccounts, useSelectedAccount } from "@/app/profile/hooks/useAccounts"
 import { ACCOUNT_STATUSES } from "@/app/profile/constants/account.constants"
 import { Button } from "@/shared/components/ui/button"
 import { Input } from "@/shared/components/ui/input"
 import { useUiStore } from "@/shared/stores/ui.store"
 
-export function Header() {
+export const Header = () => {
   const accounts = useAccounts().data?.filter((a) => a.state === "active") ?? []
   const scope = useSelectedAccount()
   const query = useUiStore((s) => s.query)

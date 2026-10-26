@@ -3,7 +3,7 @@ import type { Hono } from 'hono'
 import { describeRoute, openAPIRouteHandler, resolver } from 'hono-openapi'
 import { z } from 'zod'
 
-const ApiError = z.object({
+const ApiErrorSchema = z.object({
   status: z.number(),
   message: z.string(),
   data: z.null(),
@@ -12,14 +12,14 @@ const ApiError = z.object({
   errors: z.array(z.unknown()).optional(),
 })
 
-const json = (schema: z.ZodType) => ({ 'application/json': { schema: resolver(schema) } })
+const jsonContent = (schema: z.ZodType) => ({ 'application/json': { schema: resolver(schema) } })
 
-export const docs = (tag: string, data: z.ZodType = z.null(), status = 200) =>
+export const apiDocs = (tag: string, data: z.ZodType = z.null(), status = 200) =>
   describeRoute({
     tags: [tag],
     responses: {
-      [status]: { description: 'ok', content: json(z.object({ status: z.literal(status), message: z.string(), data })) },
-      default: { description: 'error', content: json(ApiError) },
+      [status]: { description: 'ok', content: jsonContent(z.object({ status: z.literal(status), message: z.string(), data })) },
+      default: { description: 'error', content: jsonContent(ApiErrorSchema) },
     },
   })
 

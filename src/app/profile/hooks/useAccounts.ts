@@ -2,22 +2,22 @@ import { skipToken, useMutation, useQuery } from "@tanstack/react-query"
 import type { Account, AccountState, ServerEvent } from "@/shared/types"
 import { api } from "@/core/http/api"
 import { queryClient } from "@/core/http/query-client"
-import { qk } from "@/shared/constants/api.constants"
+import { queryKeys } from "@/shared/constants/api.constants"
 import { useUiStore } from "@/shared/stores/ui.store"
 
-export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: () => api<Account[]>("/accounts") })
+export const useAccounts = () => useQuery({ queryKey: queryKeys.accounts, queryFn: () => api<Account[]>("/accounts") })
 
 export function useSelectedAccount() {
   const accountId = useUiStore((s) => s.accountId)
   return useAccounts().data?.find((a) => a.id === accountId && a.state === "active")
 }
 
-export const useLoginQr = () => useQuery<ServerEvent | null>({ queryKey: qk.loginQr, queryFn: skipToken })
+export const useLoginQr = () => useQuery<ServerEvent | null>({ queryKey: queryKeys.loginQr, queryFn: skipToken })
 
 export const useStartLoginQr = () =>
   useMutation({
     mutationFn: () => {
-      queryClient.setQueryData(qk.loginQr, null)
+      queryClient.setQueryData(queryKeys.loginQr, null)
       return api("/accounts/login-qr", { method: "POST" })
     },
   })
@@ -39,5 +39,5 @@ export const useRemoveAccount = () =>
   useMutation({
     mutationFn: (id: string) => api(`/accounts/${id}`, { method: "DELETE" }),
     onSuccess: (_, id) =>
-      Promise.all([qk.accounts, qk.threads, qk.messages(id)].map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
+      Promise.all([queryKeys.accounts, queryKeys.threads, queryKeys.messages(id)].map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
   })

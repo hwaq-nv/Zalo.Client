@@ -8,7 +8,7 @@ import { useThreads } from "@/shared/hooks/useThreads"
 import { useUiStore } from "@/shared/stores/ui.store"
 import { cn } from "@/shared/utils/shadcn"
 
-export function ThreadList() {
+export const ThreadList = () => {
   const { data, isPending, error } = useThreads()
   const scope = useSelectedAccount()
   const active = useUiStore((s) => s.active)

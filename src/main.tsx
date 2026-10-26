@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window"
 import { App } from "@/app"
 import { CallWindow } from "@/app/call"
 import { FileViewerWindow } from "@/app/file-viewer"
-import { callAction, connectCalls } from "@/app/call/services/call.service"
+import { sendCallAction, connectCalls } from "@/app/call/services/call.service"
 import { useCallStore } from "@/app/call/stores/call.store"
 import { connectEvents } from "@/core/websocket/events"
 import { Providers } from "@/providers"
@@ -27,7 +27,7 @@ if (isCallWindow) {
     const c = useCallStore.getState().call
     if (!c) return
     e.preventDefault()
-    callAction(c.accountId, { action: "hangup" })
+    sendCallAction(c.accountId, { action: "hangup" })
   })
 } else if (!isViewer) {
   connectEvents()

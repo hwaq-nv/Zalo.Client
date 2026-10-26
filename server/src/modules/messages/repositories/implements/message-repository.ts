@@ -9,15 +9,15 @@ import type { ReactionRow } from '../interfaces/message-repository'
 export default class MessageRepository implements IMessageRepository {
   constructor(@inject(TOKENS.Database) private db: Database) {}
 
-  insert(m: Omit<MessageRow, 'id' | 'reactions'>) {
-    const r = this.db
+  insert(message: Omit<MessageRow, 'id' | 'reactions'>) {
+    const result = this.db
       .query(
         `INSERT INTO messages (account_id, msg_id, thread_id, thread_type, from_id, from_name, is_self, ts, msg_type, text, raw, recalled)
          VALUES ($account_id, $msg_id, $thread_id, $thread_type, $from_id, $from_name, $is_self, $ts, $msg_type, $text, $raw, $recalled)
          ON CONFLICT (account_id, msg_id) DO NOTHING`,
       )
-      .run(m)
-    return r.changes > 0 ? Number(r.lastInsertRowid) : undefined
+      .run(message)
+    return result.changes > 0 ? Number(result.lastInsertRowid) : undefined
   }
 
   index(id: number, body: string) {
@@ -27,9 +27,9 @@ export default class MessageRepository implements IMessageRepository {
   // Cursor (ts, msg_id): nhiều ảnh gửi cùng lúc trùng ts.
   // Hai câu riêng thay vì `$before IS NULL OR ...`: dạng OR làm SQLite không seek theo ts, trang sâu phải quét từ đầu
   list(accountId: string, threadId: string, before: string | undefined, limit: number) {
-    const cursor = before === undefined ? '' : 'AND (ts, msg_id) < (SELECT ts, msg_id FROM messages WHERE account_id = $accountId AND msg_id = $before)'
+    const cursorFilter = before === undefined ? '' : 'AND (ts, msg_id) < (SELECT ts, msg_id FROM messages WHERE account_id = $accountId AND msg_id = $before)'
     return this.db
-      .query(`SELECT * FROM messages WHERE account_id = $accountId AND thread_id = $threadId ${cursor} ORDER BY ts DESC, msg_id DESC LIMIT $limit`)
+      .query(`SELECT * FROM messages WHERE account_id = $accountId AND thread_id = $threadId ${cursorFilter} ORDER BY ts DESC, msg_id DESC LIMIT $limit`)
       .all({ accountId, threadId, before: before ?? null, limit }) as MessageRow[]
   }
 
@@ -52,11 +52,11 @@ export default class MessageRepository implements IMessageRepository {
       .all({ match, accountId: accountId ?? null, limit }) as MessageRow[]
   }
 
-  react(r: ReactionRow) {
+  react(reaction: ReactionRow) {
     return (
       this.db
         .query('INSERT INTO reactions (account_id, msg_id, id, user_id, icon, ts) VALUES ($account_id, $msg_id, $id, $user_id, $icon, $ts) ON CONFLICT DO NOTHING')
-        .run(r).changes > 0
+        .run(reaction).changes > 0
     )
   }
 
@@ -72,9 +72,9 @@ export default class MessageRepository implements IMessageRepository {
          GROUP BY r.msg_id, r.icon ORDER BY count DESC, min(r.ts)`,
       )
       .all({ accountId, msgIds: JSON.stringify(msgIds) }) as { msg_id: string; icon: string; count: number; mine: number }[]
-    const out = new Map<string, ReactionCount[]>()
-    for (const { msg_id, icon, count, mine } of rows) out.set(msg_id, [...(out.get(msg_id) ?? []), { icon, count, mine: mine === 1 }])
-    return out
+    const reactionsByMsg = new Map<string, ReactionCount[]>()
+    for (const { msg_id, icon, count, mine } of rows) reactionsByMsg.set(msg_id, [...(reactionsByMsg.get(msg_id) ?? []), { icon, count, mine: mine === 1 }])
+    return reactionsByMsg
   }
 
   recentStickers(limit: number) {

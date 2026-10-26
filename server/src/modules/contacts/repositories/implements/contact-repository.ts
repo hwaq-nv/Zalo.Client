@@ -6,7 +6,7 @@ import type IContactRepository from '../interfaces/contact-repository'
 import type { ContactPatch, Friend, GroupInfoRow, Profile } from '../interfaces/contact-repository'
 
 // Ai là bạn, đang chờ kết bạn, hoặc đã có chat riêng thì là một người cần giữ liên lạc
-const LINKABLE = `(relation <> 'none' OR EXISTS (SELECT 1 FROM threads t WHERE t.account_id = users.account_id AND t.id = users.id AND t.type = 0))`
+const LINKABLE_USER_FILTER = `(relation <> 'none' OR EXISTS (SELECT 1 FROM threads t WHERE t.account_id = users.account_id AND t.id = users.id AND t.type = 0))`
 
 @injectable()
 export default class ContactRepository implements IContactRepository {
@@ -55,25 +55,25 @@ export default class ContactRepository implements IContactRepository {
         if (phone) linkByPhone.run({ accountId, id: user.id, phone })
       }
       this.link(accountId)
-      for (const f of friends) if (f.phone) keepPhone.run({ accountId, id: f.id, phone: f.phone })
+      for (const friend of friends) if (friend.phone) keepPhone.run({ accountId, id: friend.id, phone: friend.phone })
     })()
   }
 
   markSent(accountId: string, uids: string[]) {
-    const sent = this.db.query(
+    const insertSent = this.db.query(
       "INSERT INTO users (account_id, id, relation) VALUES (?, ?, 'sent') ON CONFLICT (account_id, id) DO UPDATE SET relation = 'sent' WHERE users.relation = 'none'",
     )
     this.db.transaction(() => {
       this.db.query("UPDATE users SET relation = 'none' WHERE account_id = ? AND relation = 'sent'").run(accountId)
-      for (const uid of uids) sent.run(accountId, uid)
+      for (const uid of uids) insertSent.run(accountId, uid)
     })()
   }
 
   setAliases(accountId: string, items: { userId: string; alias: string }[]) {
-    const set = this.db.query('INSERT INTO users (account_id, id, alias) VALUES (?, ?, ?) ON CONFLICT (account_id, id) DO UPDATE SET alias = excluded.alias')
+    const setAlias = this.db.query('INSERT INTO users (account_id, id, alias) VALUES (?, ?, ?) ON CONFLICT (account_id, id) DO UPDATE SET alias = excluded.alias')
     this.db.transaction(() => {
       this.db.query('UPDATE users SET alias = NULL WHERE account_id = ? AND alias IS NOT NULL').run(accountId)
-      for (const { userId, alias } of items) set.run(accountId, userId, alias)
+      for (const { userId, alias } of items) setAlias.run(accountId, userId, alias)
     })()
   }
 
@@ -90,7 +90,7 @@ export default class ContactRepository implements IContactRepository {
     )
     const now = Date.now()
     this.db.transaction(() => {
-      for (const g of groups) upsert.run({ accountId, now, ...g })
+      for (const group of groups) upsert.run({ accountId, now, ...group })
     })()
   }
 
@@ -118,22 +118,22 @@ export default class ContactRepository implements IContactRepository {
   }
 
   missingProfiles(accountId: string, limit: number) {
-    const rows = this.db.query(`SELECT id FROM users WHERE account_id = ? AND synced_at IS NULL AND ${LINKABLE} LIMIT ?`).all(accountId, limit) as { id: string }[]
+    const rows = this.db.query(`SELECT id FROM users WHERE account_id = ? AND synced_at IS NULL AND ${LINKABLE_USER_FILTER} LIMIT ?`).all(accountId, limit) as { id: string }[]
     return rows.map((r) => r.id)
   }
 
   saveProfiles(accountId: string, askedIds: string[], profiles: Profile[]) {
-    const asked = this.db.query('UPDATE users SET synced_at = ? WHERE account_id = ? AND id = ?')
+    const markAsked = this.db.query('UPDATE users SET synced_at = ? WHERE account_id = ? AND id = ?')
     // Zalo bỏ trống trường nào thì giữ giá trị đang có (vd tên lấy từ tin nhắn)
-    const save = this.db.query(
+    const saveProfile = this.db.query(
       `UPDATE users SET display_name = COALESCE($displayName, display_name), zalo_name = COALESCE($zaloName, zalo_name),
          avatar = COALESCE($avatar, avatar)
        WHERE account_id = $accountId AND id = $id`,
     )
     const now = Date.now()
     this.db.transaction(() => {
-      for (const id of askedIds) asked.run(now, accountId, id)
-      for (const p of profiles) save.run({ accountId, ...p })
+      for (const id of askedIds) markAsked.run(now, accountId, id)
+      for (const profile of profiles) saveProfile.run({ accountId, ...profile })
     })()
   }
 
@@ -144,14 +144,14 @@ export default class ContactRepository implements IContactRepository {
       .query(
         `INSERT INTO contacts (zalo_uid, created_at)
          SELECT id, $now FROM users
-         WHERE account_id = $accountId AND ($uid IS NULL OR id = $uid) AND contact_id IS NULL AND ${LINKABLE}
+         WHERE account_id = $accountId AND ($uid IS NULL OR id = $uid) AND contact_id IS NULL AND ${LINKABLE_USER_FILTER}
          ON CONFLICT (zalo_uid) DO NOTHING`,
       )
       .run(params)
     this.db
       .query(
         `UPDATE users SET contact_id = (SELECT c.id FROM contacts c WHERE c.zalo_uid = users.id)
-         WHERE account_id = $accountId AND ($uid IS NULL OR id = $uid) AND contact_id IS NULL AND ${LINKABLE}`,
+         WHERE account_id = $accountId AND ($uid IS NULL OR id = $uid) AND contact_id IS NULL AND ${LINKABLE_USER_FILTER}`,
       )
       .run({ accountId: params.accountId, uid: params.uid })
   }

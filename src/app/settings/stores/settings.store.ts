@@ -18,9 +18,9 @@ export const useSettingsStore = create<SettingsState>()(
   ),
 )
 
-// Rust chỉ giữ trong bộ nhớ: gửi lúc mở app và mỗi lần đổi
+
 export function initSettings() {
-  const push = () => invoke("media_prefs", { prefs: useSettingsStore.getState().media }).catch(console.warn)
-  push()
-  useSettingsStore.subscribe(push)
+  const sendMediaPrefs = () => invoke("media_prefs", { prefs: useSettingsStore.getState().media }).catch(console.warn)
+  sendMediaPrefs()
+  useSettingsStore.subscribe(sendMediaPrefs)
 }

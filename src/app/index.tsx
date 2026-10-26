@@ -1,21 +1,10 @@
-import { createHashRouter, Navigate, Outlet } from "react-router"
+import { createHashRouter, Navigate } from "react-router"
 import { RouterProvider } from "react-router/dom"
 import { Providers } from "@/providers"
-import { Rail } from "@/shared/components/layouts/sidebar/rail"
-import { Toaster } from "@/shared/components/ui/sonner"
+import { AppLayout } from "@/app/app-layout"
 import { ChatScreen } from "@/app/chat"
 import { SettingsScreen } from "@/app/settings"
-import { SECTIONS } from "@/app/settings/constants/settings.constants"
-
-function AppLayout() {
-  return (
-    <div className="flex h-screen bg-background text-foreground">
-      <Rail />
-      <Outlet />
-      <Toaster />
-    </div>
-  )
-}
+import { SETTINGS_SECTIONS } from "@/app/settings/constants/settings.constants"
 
 const router = createHashRouter([
   {
@@ -26,15 +15,15 @@ const router = createHashRouter([
         path: "settings",
         element: <SettingsScreen />,
         children: [
-          { index: true, element: <Navigate to={SECTIONS[0].to} replace /> },
-          ...SECTIONS.map(({ to, Component }) => ({ path: to, Component })),
+          { index: true, element: <Navigate to={SETTINGS_SECTIONS[0].to} replace /> },
+          ...SETTINGS_SECTIONS.map(({ to, Component }) => ({ path: to, Component })),
         ],
       },
     ],
   },
 ])
 
-export function App() {
+export const App = () => {
   return (
     <Providers>
       <RouterProvider router={router} />

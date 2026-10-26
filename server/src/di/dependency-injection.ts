@@ -23,17 +23,17 @@ import { ZaloClient } from '../third-party/zalo/zalo-client'
 import { TOKENS } from './tokens'
 
 export function createContainer(database: Database = db) {
-  const c = new Container({ defaultScope: 'Singleton' })
-  c.bind<Database>(TOKENS.Database).toConstantValue(database)
-  c.bind(ZaloClient).toSelf()
-  c.bind<IAccountRepository>(TOKENS.AccountRepository).to(AccountRepository)
-  c.bind<IAccountService>(TOKENS.AccountService).to(AccountService)
-  c.bind<IContactRepository>(TOKENS.ContactRepository).to(ContactRepository)
-  c.bind<IContactService>(TOKENS.ContactService).to(ContactService)
-  c.bind<IThreadRepository>(TOKENS.ThreadRepository).to(ThreadRepository)
-  c.bind<IThreadService>(TOKENS.ThreadService).to(ThreadService)
-  c.bind<IMessageRepository>(TOKENS.MessageRepository).to(MessageRepository)
-  c.bind<IMessageService>(TOKENS.MessageService).to(MessageService)
-  c.bind<ICallService>(TOKENS.CallService).to(CallService)
-  return c
+  const container = new Container({ defaultScope: 'Singleton' })
+  container.bind<Database>(TOKENS.Database).toConstantValue(database)
+  container.bind(ZaloClient).toSelf()
+  container.bind<IAccountRepository>(TOKENS.AccountRepository).to(AccountRepository)
+  container.bind<IAccountService>(TOKENS.AccountService).to(AccountService)
+  container.bind<IContactRepository>(TOKENS.ContactRepository).to(ContactRepository)
+  container.bind<IContactService>(TOKENS.ContactService).to(ContactService)
+  container.bind<IThreadRepository>(TOKENS.ThreadRepository).to(ThreadRepository)
+  container.bind<IThreadService>(TOKENS.ThreadService).to(ThreadService)
+  container.bind<IMessageRepository>(TOKENS.MessageRepository).to(MessageRepository)
+  container.bind<IMessageService>(TOKENS.MessageService).to(MessageService)
+  container.bind<ICallService>(TOKENS.CallService).to(CallService)
+  return container
 }

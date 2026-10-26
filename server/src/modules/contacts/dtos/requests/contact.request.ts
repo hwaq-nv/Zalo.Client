@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const text = z.string().trim().transform((s) => s || null).nullable().optional()
+const optionalText = z.string().trim().transform((s) => s || null).nullable().optional()
 
 export const ContactIdRequest = z.object({ id: z.coerce.number().int() })
 export type ContactIdRequest = z.infer<typeof ContactIdRequest>
@@ -9,5 +9,5 @@ export type ContactIdRequest = z.infer<typeof ContactIdRequest>
 export const AtRiskContactsRequest = z.object({ minLinks: z.coerce.number().int().min(1).max(10).default(2) })
 export type AtRiskContactsRequest = z.infer<typeof AtRiskContactsRequest>
 
-export const UpdateContactRequest = z.object({ name: text, phone: text, note: text }).strict()
+export const UpdateContactRequest = z.object({ name: optionalText, phone: optionalText, note: optionalText }).strict()
 export type UpdateContactRequest = z.infer<typeof UpdateContactRequest>

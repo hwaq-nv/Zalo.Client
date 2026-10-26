@@ -9,4 +9,4 @@ export const MESSAGE_LABELS: Record<string, string> = {
   [MessageType.Location]: "[Vị trí]",
   [MessageType.Voice]: "[Tin nhắn thoại]",
 }
-export const BARE_MESSAGE_TYPES = new Set<string>([MessageType.Sticker, MessageType.Photo, MessageType.Gif])
+export const MEDIA_MESSAGE_TYPES = new Set<string>([MessageType.Sticker, MessageType.Photo, MessageType.Gif])

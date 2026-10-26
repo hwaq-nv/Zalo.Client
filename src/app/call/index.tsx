@@ -1,15 +1,15 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/shared/components/ui/avatar"
-import { CallControls } from "@/app/call/components/call-controls"
-import { CallMedia } from "@/app/call/components/call-media"
-import { useDuration } from "@/app/call/hooks/useDuration"
-import { useTone } from "@/app/call/hooks/useTone"
+import { CallControls } from "@/app/call/components/in-call/call-controls"
+import { CallMedia } from "@/app/call/components/in-call/call-media"
+import { useCallTimer } from "@/app/call/hooks/useCallTimer"
+import { useRingtone } from "@/app/call/hooks/useRingtone"
 import { useCallStore } from "@/app/call/stores/call.store"
 
-export function CallWindow() {
+export const CallWindow = () => {
   const call = useCallStore((s) => s.call)
   const state = call?.state
-  const duration = useDuration(state?.since ?? 0)
-  useTone(state?.phase === "incoming" && !state.noAnswer ? "ring" : state?.phase === "outgoing" ? "ringback" : null)
+  const duration = useCallTimer(state?.since ?? 0)
+  useRingtone(state?.phase === "incoming" && !state.noAnswer ? "ring" : state?.phase === "outgoing" ? "ringback" : null)
 
   if (!call || !state) return null
 

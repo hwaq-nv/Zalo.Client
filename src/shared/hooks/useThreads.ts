@@ -2,19 +2,19 @@ import { skipToken, useMutation, useQuery } from "@tanstack/react-query"
 import type { ThreadRow } from "@/shared/types"
 import { api } from "@/core/http/api"
 import { queryClient } from "@/core/http/query-client"
-import { qk } from "@/shared/constants/api.constants"
+import { queryKeys } from "@/shared/constants/api.constants"
 import { useUiStore } from "@/shared/stores/ui.store"
 
-export const useThreads = () => useQuery({ queryKey: qk.threads, queryFn: () => api<ThreadRow[]>("/threads") })
+export const useThreads = () => useQuery({ queryKey: queryKeys.threads, queryFn: () => api<ThreadRow[]>("/threads") })
 
 const collator = new Intl.Collator("vi")
-const byName = (rows: ThreadRow[]) => [...rows].sort((a, b) => collator.compare(a.name ?? a.id, b.name ?? b.id))
+const sortByName = (rows: ThreadRow[]) => [...rows].sort((a, b) => collator.compare(a.name ?? a.id, b.name ?? b.id))
 
 export const useThreadContacts = (accountId?: string) =>
   useQuery({
-    queryKey: qk.threadContacts(accountId ?? ""),
+    queryKey: queryKeys.threadContacts(accountId ?? ""),
     queryFn: accountId ? () => api<ThreadRow[]>(`/threads/contacts?accountId=${accountId}`) : skipToken,
-    select: byName,
+    select: sortByName,
   })
 
 export function useActiveThread() {
@@ -36,5 +36,5 @@ export const useMarkRead = () =>
   useMutation({
     mutationFn: ({ accountId, threadId }: { accountId: string; threadId: string }) =>
       api(`/threads/${accountId}/${threadId}/read`, { method: "POST" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.threads }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.threads }),
   })

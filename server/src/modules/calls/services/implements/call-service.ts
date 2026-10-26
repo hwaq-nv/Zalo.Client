@@ -14,15 +14,15 @@ import type ICallService from '../interfaces/call-service'
 import { CallUi } from './call-ui'
 import { VoipControl } from '../../../../third-party/zalo/types'
 
-type Data = Record<string, any>
-type Signal = [path: string, params: (d: Data, imei: string) => Data]
+type SignalData = Record<string, any>
+type Signal = [path: string, params: (d: SignalData, imei: string) => SignalData]
 
-const TOPIC = 'calls'
+const CALLS_TOPIC = 'calls'
 // Zalo PC bỏ control cũ hơn một phút
 const CONTROL_TTL_MS = 60_000
 
-const groupMember: Signal[1] = (d) => ({ calleeId: d.calleeId, callId: d.callId, callType: d.callType, hostCall: d.hostCall, data: d.data, partners: d.partners })
-const groupState: Signal[1] = (d) => ({
+const groupMemberParams: Signal[1] = (d) => ({ calleeId: d.calleeId, callId: d.callId, callType: d.callType, hostCall: d.hostCall, data: d.data, partners: d.partners })
+const groupStateParams: Signal[1] = (d) => ({
   callId: d.callId, hostCall: d.hostCall, userId: d.userId, callstate: d.callState, audiostate: d.audioState, videostate: d.videoState, params: d.params,
 })
 
@@ -48,18 +48,18 @@ const SIGNALS: Record<number, Signal> = {
   12434: ['group/request', (d) => ({
     calleeId: d.calleeId, callId: d.callId, callType: d.callType, data: d.data, session: d.session, partners: d.partners, groupId: d.groupId,
   })],
-  12435: ['group/adduser', (d) => ({ ...groupMember(d, ''), session: d.session })],
-  12436: ['group/answer', groupMember],
-  12437: ['group/cancel', groupMember],
-  12438: ['group/endcall', groupMember],
-  12439: ['group/ringring', groupMember],
+  12435: ['group/adduser', (d) => ({ ...groupMemberParams(d, ''), session: d.session })],
+  12436: ['group/answer', groupMemberParams],
+  12437: ['group/cancel', groupMemberParams],
+  12438: ['group/endcall', groupMemberParams],
+  12439: ['group/ringring', groupMemberParams],
   12445: ['group/state', (d) => ({ callId: d.callId, hostCall: d.hostCall, callType: d.callType })],
   12446: ['group/finish', (d) => ({
     callId: d.callId, callType: d.callType, data: d.data, duration: d.duration, hostCall: d.hostCall, partners: d.partners, status: d.status, joinTime: d.joinTime,
   })],
   12447: ['group/notify', (d) => ({ callId: d.callId, hostCall: d.hostCall, callType: d.callType, status: d.status, data: d.data })],
-  12097: ['group/ping', groupState],
-  12098: ['group/broadcast', groupState],
+  12097: ['group/ping', groupStateParams],
+  12098: ['group/broadcast', groupStateParams],
   12043: ['group/join', (d) => ({
     userId: d.userId, callId: d.callId, hostCall: d.hostCall, status: d.status, srcJoinCall: d.srcJoinCall, audiostate: d.audioState, videostate: d.videoState, data: d.data,
   })],
@@ -69,117 +69,117 @@ const SIGNALS: Record<number, Signal> = {
 }
 
 // settings.features.group_call_max_users của Zalo, mặc định 5 như Zalo PC
-const maxUsersOf = (settings: Data | undefined) => Number(settings?.features?.group_call_max_users) || 5
+const getMaxGroupCallUsers = (settings: SignalData | undefined) => Number(settings?.features?.group_call_max_users) || 5
 
 // Như _processCtrlMessages của Zalo PC: data là chuỗi JSON thì parse
-const parseData = (d: unknown) => (typeof d === 'string' && /^[{[]/.test(d) ? JSON.parse(d) : d)
+const parseControlData = (d: unknown) => (typeof d === 'string' && /^[{[]/.test(d) ? JSON.parse(d) : d)
 
-type Line = { engine: EngineCore; ui: CallUi; queue: Promise<void> }
+type CallSession = { engine: EngineCore; ui: CallUi; queue: Promise<void> }
 
 
 @injectable()
 export default class CallService implements ICallService {
-  private lines = new Map<string, Line>()
+  private sessions = new Map<string, CallSession>()
 
   constructor(
     private zalo: ZaloClient,
     @inject(TOKENS.ThreadRepository) private threads: IThreadRepository,
   ) {
-    zalo.on('voip', (id, c) => this.control(id, c))
+    zalo.on('voip', (id, c) => this.handleVoipControl(id, c))
     mediaLink.on('event', (e) => e.type === 'log' && logger.info(`[media] ${e.line}`))
   }
 
   snapshot() {
-    return [...this.lines].flatMap(([accountId, { ui }]): CallMessage[] => (ui.state ? [{ type: 'state', accountId, state: ui.state }] : []))
+    return [...this.sessions].flatMap(([accountId, { ui }]): CallMessage[] => (ui.state ? [{ type: 'state', accountId, state: ui.state }] : []))
   }
 
   start(accountId: string, { threadId, video, members }: StartCallRequest) {
-    const api = this.zalo.get(accountId)
+    const api = this.zalo.getApi(accountId)
     if (!api) throw new ConflictError('account offline', 'ACCOUNT_OFFLINE')
-    if (this.busy()) throw new ConflictError('already in a call', 'IN_CALL')
+    if (this.isBusy()) throw new ConflictError('already in a call', 'IN_CALL')
     const type = this.threads.typeOf(accountId, threadId)
     if (type === undefined) throw new NotFoundError('thread not found')
-    const line = this.line(accountId)
-    const p = this.threads.profile(accountId, threadId)
+    const session = this.getSession(accountId)
+    const profile = this.threads.profile(accountId, threadId)
     if (type === ThreadType.User) {
-      line.ui.wantCamera = video
-      line.engine.onZaloFrame({
+      session.ui.wantCamera = video
+      session.engine.onZaloFrame({
         type: 'request',
         command: 'makeCall',
-        data: { partner: [{ id: threadId, name: p?.name ?? '', avatar: p?.avatar ?? '' }], type: video ? 3 : 1 },
+        data: { partner: [{ id: threadId, name: profile?.name ?? '', avatar: profile?.avatar ?? '' }], type: video ? 3 : 1 },
       })
       return
     }
-    const maxUsers = maxUsersOf(api.getContext().settings)
+    const maxUsers = getMaxGroupCallUsers(api.getContext().settings)
     if (!members.length) throw new BadRequestError('members required for a group call')
     if (members.length > maxUsers - 1) throw new BadRequestError(`at most ${maxUsers - 1} members`)
-    line.ui.wantCamera = video
-    line.engine.onZaloFrame({
+    session.ui.wantCamera = video
+    session.engine.onZaloFrame({
       type: 'request',
       command: 'makeCall',
-      data: { partner: members, type: video ? 6 : 5, groupInfo: { id: threadId, name: p?.name ?? '', avatar: p?.avatar ?? '', maxUsers } },
+      data: { partner: members, type: video ? 6 : 5, groupInfo: { id: threadId, name: profile?.name ?? '', avatar: profile?.avatar ?? '', maxUsers } },
     })
   }
 
   async groupMembers(accountId: string, groupId: string) {
-    const api = this.zalo.get(accountId)
+    const api = this.zalo.getApi(accountId)
     if (!api) throw new ConflictError('account offline', 'ACCOUNT_OFFLINE')
     const info = (await api.getGroupInfo(groupId)).gridInfoMap[groupId]
     if (!info) throw new NotFoundError('group not found')
     const self = api.getOwnId()
     const ids = (info.memberIds?.length ? info.memberIds : info.currentMems.map((m) => m.id)).filter((id) => id !== self)
-    // ponytail: hỏi hồ sơ cả nhóm trong một lần; nhóm hàng nghìn người thì cần chia trang
-    const { profiles } = ids.length ? await api.getGroupMembersInfo(ids) : { profiles: {} as Data }
+    // Hỏi hồ sơ cả nhóm trong một lần; nhóm hàng nghìn người thì cần chia trang
+    const { profiles } = ids.length ? await api.getGroupMembersInfo(ids) : { profiles: {} as SignalData }
     const members = ids.map((id) => {
-      const p = profiles[id]
-      return { id, name: this.threads.profile(accountId, id)?.name || p?.displayName || p?.zaloName || id, avatar: p?.avatar ?? '' }
+      const memberProfile = profiles[id]
+      return { id, name: this.threads.profile(accountId, id)?.name || memberProfile?.displayName || memberProfile?.zaloName || id, avatar: memberProfile?.avatar ?? '' }
     })
-    return { maxUsers: maxUsersOf(api.getContext().settings), members }
+    return { maxUsers: getMaxGroupCallUsers(api.getContext().settings), members }
   }
 
   action(a: CallAction) {
-    this.lines.get(a.accountId)?.ui.action(a)
+    this.sessions.get(a.accountId)?.ui.action(a)
   }
 
-  private busy(except?: string) {
-    return [...this.lines].some(([id, { engine }]) => id !== except && engine.call)
+  private isBusy(except?: string) {
+    return [...this.sessions].some(([id, { engine }]) => id !== except && engine.call)
   }
 
-  private control(accountId: string, c: VoipControl) {
-    let data: Data
+  private handleVoipControl(accountId: string, control: VoipControl) {
+    let data: SignalData
     try {
-      data = parseData(c.data)
+      data = parseControlData(control.data)
     } catch (err) {
-      return logger.warn('call: bad voip control', { accountId, act: c.act, err })
+      return logger.warn('call: bad voip control', { accountId, act: control.act, err })
     }
     const ts = Number(data?.ts)
     if (ts && Date.now() - ts > CONTROL_TTL_MS) return
-    if ((c.act === 'request' || c.act === 'group_request') && this.busy(accountId)) return
-    this.line(accountId).engine.onZaloFrame({ type: 'control', data: { ...c, data } })
+    if ((control.act === 'request' || control.act === 'group_request') && this.isBusy(accountId)) return
+    this.getSession(accountId).engine.onZaloFrame({ type: 'control', data: { ...control, data } })
   }
 
-  private line(accountId: string) {
-    let line = this.lines.get(accountId)
-    if (line) return line
+  private getSession(accountId: string) {
+    let session = this.sessions.get(accountId)
+    if (session) return session
     const log = (...a: unknown[]) => logger.info(`[zcall] ${format(...a)}`, { accountId })
     const ui = new CallUi(
       accountId,
       {
-        message: (m) => publish(TOPIC, JSON.stringify(m)),
-        video: (src, key, data) => publish(TOPIC, Buffer.concat([Buffer.from(JSON.stringify({ accountId, src, key }) + '\n'), data])),
+        message: (m) => publish(CALLS_TOPIC, JSON.stringify(m)),
+        video: (src, key, data) => publish(CALLS_TOPIC, Buffer.concat([Buffer.from(JSON.stringify({ accountId, src, key }) + '\n'), data])),
       },
       log,
     )
     const media = new ZrtcMediaBackend({ log, sendUdp: true })
-    const engine: EngineCore = new EngineCore({ emit: (f) => this.onFrame(accountId, engine, f), media, log, ui, group: true })
-    line = { engine, ui, queue: Promise.resolve() }
-    this.lines.set(accountId, line)
-    engine.onZaloFrame({ type: 'update', command: 'init', data: { local: { id: this.zalo.get(accountId)?.getOwnId() ?? '' } } })
-    return line
+    const engine: EngineCore = new EngineCore({ emit: (f) => this.handleEngineFrame(accountId, engine, f), media, log, ui, group: true })
+    session = { engine, ui, queue: Promise.resolve() }
+    this.sessions.set(accountId, session)
+    engine.onZaloFrame({ type: 'update', command: 'init', data: { local: { id: this.zalo.getApi(accountId)?.getOwnId() ?? '' } } })
+    return session
   }
 
-  private onFrame(accountId: string, engine: EngineCore, f: { type: string; command?: string | number; data?: Data }) {
-    if (f.type === 'sendSignal') return this.signal(accountId, engine, Number(f.command), f.data ?? {})
+  private handleEngineFrame(accountId: string, engine: EngineCore, f: { type: string; command?: string | number; data?: SignalData }) {
+    if (f.type === 'sendSignal') return this.sendSignal(accountId, engine, Number(f.command), f.data ?? {})
     if (f.type === 'request' && f.command === 'getAliasName') {
       const noisedId = String(f.data?.noisedId ?? '')
       const aliasName = this.threads.profile(accountId, noisedId)?.name ?? ''
@@ -187,14 +187,14 @@ export default class CallService implements ICallService {
     }
   }
 
-  private signal(accountId: string, engine: EngineCore, command: number, d: Data) {
-    const s = SIGNALS[command]
-    if (!s) return logger.warn('call: unsupported signal', { accountId, command })
-    const line = this.lines.get(accountId)!
-    line.queue = line.queue.then(async () => {
+  private sendSignal(accountId: string, engine: EngineCore, command: number, payload: SignalData) {
+    const signal = SIGNALS[command]
+    if (!signal) return logger.warn('call: unsupported signal', { accountId, command })
+    const session = this.sessions.get(accountId)!
+    session.queue = session.queue.then(async () => {
       try {
-        const imei = this.zalo.get(accountId)?.getContext().imei ?? ''
-        const data = await this.zalo.voicecall(accountId, s[0], s[1](d, imei))
+        const imei = this.zalo.getApi(accountId)?.getContext().imei ?? ''
+        const data = await this.zalo.voicecall(accountId, signal[0], signal[1](payload, imei))
         engine.onZaloFrame({ type: 'recvSignal', command, data })
       } catch (err) {
         logger.warn('call: signal failed', { accountId, command, err })

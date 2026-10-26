@@ -1,9 +1,8 @@
-import { Contact, type LucideIcon, MessageCircle, Settings, UserCog } from "lucide-react"
+import { Contact, MessageCircle, Settings, UserCog } from "lucide-react"
 import { useMatch, useNavigate } from "react-router"
-import { AccountRail } from "@/app/profile/components/account-rail"
-import { Button } from "@/shared/components/ui/button"
+import { AccountRail } from "@/app/profile/components/rail/account-rail"
 import { Separator } from "@/shared/components/ui/separator"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/components/ui/tooltip"
+import { RailButton } from "@/shared/components/layouts/sidebar/rail-button"
 import type { SidebarModel } from "@/shared/models/sidebar.model"
 import { useUiStore } from "@/shared/stores/ui.store"
 
@@ -14,26 +13,7 @@ const items: SidebarModel[] = [
 
 const manage: SidebarModel = { id: "accounts", label: "Quản lý tài khoản", icon: UserCog }
 
-function RailButton({ label, icon: Icon, active, onClick }: { label: string; icon: LucideIcon; active: boolean; onClick: () => void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          size="icon-lg"
-          variant={active ? "secondary" : "ghost"}
-          aria-label={label}
-          aria-current={active ? "page" : undefined}
-          onClick={onClick}
-        >
-          <Icon />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-export function Rail() {
+export const Rail = () => {
   const tab = useUiStore((s) => s.tab)
   const setTab = useUiStore((s) => s.setTab)
   const navigate = useNavigate()

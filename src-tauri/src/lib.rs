@@ -1,7 +1,10 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-mod media;
-mod call_window;
-mod file_viewer;
+mod commands;
+mod models;
+mod services;
+mod utils;
+
+use commands::{call_window, file_viewer, media};
 
 #[tauri::command]
 fn greet(name: &str) -> String {

@@ -1,10 +1,10 @@
 import { FieldDescription, FieldError, FieldGroup, FieldLegend, FieldSet } from "@/shared/components/ui/field"
-import { DeviceSelect } from "@/app/settings/components/device-select"
-import { SwitchField } from "@/app/settings/components/switch-field"
+import { DeviceSelect } from "@/app/settings/components/fields/device-select"
+import { SwitchField } from "@/app/settings/components/fields/switch-field"
 import { useMediaDevices } from "@/app/settings/hooks/useMediaDevices"
 import { useSettingsStore } from "@/app/settings/stores/settings.store"
 
-export function CallSettings() {
+export const CallSettings = () => {
   const { media, setMedia } = useSettingsStore()
   const { data, error } = useMediaDevices()
   return (

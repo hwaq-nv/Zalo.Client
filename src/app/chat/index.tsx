@@ -1,10 +1,10 @@
-import { ChatView } from "@/app/chat/components/chat-view"
+import { ChatView } from "@/app/chat/components/conversation/chat-view"
 import { Header } from "@/shared/components/layouts/header/header"
 import { Sidebar } from "@/shared/components/layouts/sidebar/sidebar"
 import { useUiStore } from "@/shared/stores/ui.store"
 import { cn } from "@/shared/utils/shadcn"
 
-export function ChatScreen() {
+export const ChatScreen = () => {
   const open = useUiStore((s) => !!s.active)
 
   return (

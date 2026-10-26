@@ -15,24 +15,24 @@ import { USER_AGENT } from './constants'
 export class ZaloClient extends EventEmitter<ZaloEvents> {
   private sessions = new Map<string, API>()
 
-  private create() {
+  private createZalo() {
     return new Zalo({ selfListen: true, checkUpdate: false, logging: false })
   }
 
-  get(accountId: string) {
+  getApi(accountId: string) {
     return this.sessions.get(accountId)
   }
 
   loginQR(callback: LoginQRCallback) {
-    return this.create().loginQR({ userAgent: USER_AGENT }, callback)
+    return this.createZalo().loginQR({ userAgent: USER_AGENT }, callback)
   }
 
   login(credentials: Credentials) {
-    return this.create().login(credentials)
+    return this.createZalo().login(credentials)
   }
 
 
-  credentialsOf(api: API): Credentials {
+  getCredentials(api: API): Credentials {
     const ctx = api.getContext()
     return { imei: ctx.imei, userAgent: ctx.userAgent, cookie: api.getCookie().toJSON()?.cookies ?? [] }
   }
@@ -40,18 +40,18 @@ export class ZaloClient extends EventEmitter<ZaloEvents> {
   attach(id: string, api: API) {
     this.detach(id)
     this.sessions.set(id, api)
-    const l = api.listener
-    l.on('connected', () => this.emit('status', id, 'online'))
-    l.on('disconnected', () => this.emit('status', id, 'connecting'))
-    l.on('closed', (code) => this.emit('status', id, code === CloseReason.DuplicateConnection ? 'kicked' : 'offline'))
-    l.on('message', (m) => this.emit('message', id, m))
-    l.on('old_messages', (msgs, type) => this.emit('old_messages', id, msgs, type))
-    l.on('undo', (u) => this.emit('undo', id, u))
-    l.on('reaction', (r) => this.emit('reaction', id, r))
-    l.on('old_reactions', (rs, isGroup) => this.emit('old_reactions', id, rs, isGroup))
-    l.on('friend_event', (e) => this.emit('friend_event', id, e))
-    l.on('group_event', (e) => this.emit('group_event', id, e))
-    l.on('voip', (c) => this.emit('voip', id, c))
+    const listener = api.listener
+    listener.on('connected', () => this.emit('status', id, 'online'))
+    listener.on('disconnected', () => this.emit('status', id, 'connecting'))
+    listener.on('closed', (code) => this.emit('status', id, code === CloseReason.DuplicateConnection ? 'kicked' : 'offline'))
+    listener.on('message', (m) => this.emit('message', id, m))
+    listener.on('old_messages', (msgs, type) => this.emit('old_messages', id, msgs, type))
+    listener.on('undo', (u) => this.emit('undo', id, u))
+    listener.on('reaction', (r) => this.emit('reaction', id, r))
+    listener.on('old_reactions', (rs, isGroup) => this.emit('old_reactions', id, rs, isGroup))
+    listener.on('friend_event', (e) => this.emit('friend_event', id, e))
+    listener.on('group_event', (e) => this.emit('group_event', id, e))
+    listener.on('voip', (c) => this.emit('voip', id, c))
     if (!('voicecall' in api))
       api.custom<unknown, VoicecallProps>('voicecall', async ({ utils, props }) => {
         const params = utils.encodeAES(JSON.stringify(props.params))
@@ -59,7 +59,7 @@ export class ZaloClient extends EventEmitter<ZaloEvents> {
         const url = utils.makeURL(`${api.zpwServiceMap.voice_call[0]}/api/voicecall/${props.path}`, { params })
         return utils.resolve(await utils.request(url, { method: 'GET' }))
       })
-    l.start({ retryOnClose: true })
+    listener.start({ retryOnClose: true })
     this.emit('attached', id, api)
   }
 

@@ -6,7 +6,7 @@ import type { ThreadRow } from '../../../../types'
 import type IThreadRepository from '../interfaces/thread-repository'
 import type { ThreadActivity } from '../interfaces/thread-repository'
 
-const PREVIEW: Record<string, string> = {
+const PREVIEW_LABELS: Record<string, string> = {
   'chat.photo': '[Hình ảnh]',
   'chat.sticker': '[Sticker]',
   'chat.gif': '[GIF]',
@@ -20,7 +20,7 @@ const PREVIEW: Record<string, string> = {
 }
 
 // Tên người: tên tự đặt cho contact > tên gợi nhớ của nick > tên Zalo
-const LIST = `SELECT t.account_id, a.name AS account_name, t.id, t.type,
+const LIST_THREADS_SQL = `SELECT t.account_id, a.name AS account_name, t.id, t.type,
        IIF(t.type = 0, COALESCE(c.name, u.alias, u.display_name, u.zalo_name), g.name) AS name,
        IIF(t.type = 0, u.avatar, g.avatar) AS avatar,
        t.last_msg_at, t.unread, u.contact_id, m.msg_type, m.text, m.recalled,
@@ -35,9 +35,9 @@ const LIST = `SELECT t.account_id, a.name AS account_name, t.id, t.type,
 type ListRow = Omit<ThreadRow, 'preview'> & { msg_type: string | null; text: string | null; recalled: 0 | 1 | null; action: string | null }
 
 // Preview tính lúc đọc từ tin cuối nên thu hồi xong là tự đúng
-const toThread = ({ msg_type, text, recalled, action, ...t }: ListRow): ThreadRow => ({
+const toThreadRow = ({ msg_type, text, recalled, action, ...t }: ListRow): ThreadRow => ({
   ...t,
-  preview: msg_type === null ? null : recalled ? 'Tin nhắn đã được thu hồi' : (text ?? PREVIEW[action ?? ''] ?? PREVIEW[msg_type] ?? '[Tin nhắn]'),
+  preview: msg_type === null ? null : recalled ? 'Tin nhắn đã được thu hồi' : (text ?? PREVIEW_LABELS[action ?? ''] ?? PREVIEW_LABELS[msg_type] ?? '[Tin nhắn]'),
 })
 
 @injectable()
@@ -46,9 +46,9 @@ export default class ThreadRepository implements IThreadRepository {
 
   list(accountId?: string) {
     const rows = this.db
-      .query(`${LIST} WHERE t.last_msg_at IS NOT NULL AND ($accountId IS NULL OR t.account_id = $accountId) ORDER BY t.last_msg_at DESC`)
+      .query(`${LIST_THREADS_SQL} WHERE t.last_msg_at IS NOT NULL AND ($accountId IS NULL OR t.account_id = $accountId) ORDER BY t.last_msg_at DESC`)
       .all({ accountId: accountId ?? null }) as ListRow[]
-    return rows.map(toThread)
+    return rows.map(toThreadRow)
   }
 
   contacts(accountId: string) {

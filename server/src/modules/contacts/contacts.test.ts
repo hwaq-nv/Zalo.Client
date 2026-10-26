@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { FriendEventType, type FriendEvent, type User } from 'zca-js'
 import { fakeZalo } from '../../../test/fake-zalo'
-import { openDb } from '../../dbs/sqlite'
+import { openDatabase } from '../../dbs/sqlite'
 import { createContainer } from '../../di/dependency-injection'
 import { TOKENS } from '../../di/tokens'
 import { ZaloClient } from '../../third-party/zalo/zalo-client'
@@ -16,7 +16,7 @@ const A = '1111111111111111111'
 const B = '2222222222222222222'
 
 function setup() {
-  const db = openDb(':memory:')
+  const db = openDatabase(':memory:')
   const c = createContainer(db)
   const zalo = c.get(ZaloClient)
   const repo = c.get<IAccountRepository>(TOKENS.AccountRepository)

@@ -1,27 +1,27 @@
 import type { FileExtension, FileType, ViewerFile, ZipEntry, ZipRow } from "@/app/file-viewer/models/file-viewer.model"
 import { FILE_TYPES } from "@/app/file-viewer/constants/file-viewer.constants"
 
-const UNITS = ["B", "KB", "MB", "GB"]
+const SIZE_UNITS = ["B", "KB", "MB", "GB"]
 
-export const fileType = (ext: string): FileType => FILE_TYPES[ext.toLowerCase() as FileExtension] ?? "unknown"
-export const extOf = (name: string) => (name.includes(".") ? name.split(".").pop()!.toLowerCase() : "")
-export const fileKey = (f: ViewerFile) => ["file", f.path ?? f.url]
+export const getFileType = (ext: string): FileType => FILE_TYPES[ext.toLowerCase() as FileExtension] ?? "unknown"
+export const getExtension = (name: string) => (name.includes(".") ? name.split(".").pop()!.toLowerCase() : "")
+export const getFileQueryKey = (f: ViewerFile) => ["file", f.path ?? f.url]
 
 export function formatSize(bytes: number) {
   let i = 0
-  while (bytes >= 1024 && i < UNITS.length - 1) {
+  while (bytes >= 1024 && i < SIZE_UNITS.length - 1) {
     bytes /= 1024
     i++
   }
-  return `${bytes.toLocaleString("vi-VN", { maximumFractionDigits: i ? 1 : 0 })} ${UNITS[i]}`
+  return `${bytes.toLocaleString("vi-VN", { maximumFractionDigits: i ? 1 : 0 })} ${SIZE_UNITS[i]}`
 }
 
-export function fromUrl(url: string): ViewerFile {
+export function fileFromUrl(url: string): ViewerFile {
   const name = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "") || "anh.jpg"
-  return { name, ext: extOf(name) || "jpg", url }
+  return { name, ext: getExtension(name) || "jpg", url }
 }
 
-export function zipTree(entries: ZipEntry[]): ZipRow[] {
+export function buildZipTree(entries: ZipEntry[]): ZipRow[] {
   const all = new Map<string, ZipEntry>()
   for (const e of entries) {
     const parts = e.name.split("/").filter(Boolean)

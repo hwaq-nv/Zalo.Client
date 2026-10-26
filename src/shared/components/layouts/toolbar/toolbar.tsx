@@ -4,7 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/shared/components/ui/avat
 import { Button } from "@/shared/components/ui/button"
 import type { ToolbarModel } from "@/shared/models/toolbar.model"
 
-export function Toolbar({ title, subtitle, avatar, onBack, children }: ToolbarModel & { onBack?: () => void; children?: ReactNode }) {
+export const Toolbar = ({ title, subtitle, avatar, onBack, children }: ToolbarModel & { onBack?: () => void; children?: ReactNode }) => {
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b px-2 sm:px-4">
       {onBack && (

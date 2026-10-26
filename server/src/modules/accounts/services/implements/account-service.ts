@@ -85,7 +85,7 @@ export default class AccountService implements IAccountService {
   private async onLoggedIn(api: API) {
     const id = api.getOwnId()
     const { profile } = await api.fetchAccountInfo()
-    this.accounts.upsert(id, profile.displayName, profile.avatar, this.zalo.credentialsOf(api))
+    this.accounts.upsert(id, profile.displayName, profile.avatar, this.zalo.getCredentials(api))
     this.zalo.attach(id, api)
   }
 

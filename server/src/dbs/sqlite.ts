@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { config } from '../config'
-import { searchBody } from '../core/text/fold'
+import { buildSearchText } from '../core/text/normalize'
 
 export type Migration = string | ((db: Database) => void)
 
@@ -146,13 +146,13 @@ export const migrations: Migration[] = [
      synced_at  INTEGER NOT NULL,
      PRIMARY KEY (account_id, key)
    ) STRICT, WITHOUT ROWID;`,
-  // v4: fold() là JS nên không làm được trong SQL
+  // v4: removeDiacritics() là JS nên không làm được trong SQL
   (db) => {
-    const index = db.query('INSERT INTO messages_fts (rowid, body) VALUES (?, ?)')
+    const insertFts = db.query('INSERT INTO messages_fts (rowid, body) VALUES (?, ?)')
     const rows = db.query('SELECT id, text, raw FROM messages WHERE recalled = 0').iterate() as Iterable<{ id: number; text: string | null; raw: string }>
-    for (const m of rows) {
-      const body = searchBody(m.text, JSON.parse(m.raw).content)
-      if (body) index.run(m.id, body)
+    for (const row of rows) {
+      const body = buildSearchText(row.text, JSON.parse(row.raw).content)
+      if (body) insertFts.run(row.id, body)
     }
   },
   // v5: sticker gần đây cho khung chọn sticker, chỉ sticker mình gửi nên index rất nhỏ
@@ -170,24 +170,24 @@ export const migrations: Migration[] = [
    ) STRICT, WITHOUT ROWID;`,
 ]
 
-export function migrate(db: Database, list = migrations) {
-  const { user_version: from } = db.query('PRAGMA user_version').get() as { user_version: number }
-  if (from >= list.length) return
+export function migrate(db: Database, allMigrations = migrations) {
+  const { user_version: fromVersion } = db.query('PRAGMA user_version').get() as { user_version: number }
+  if (fromVersion >= allMigrations.length) return
 
   // DB đang có dữ liệu: giữ bản trước khi đổi schema làm đường lui (thay file .db bằng bản này rồi chạy code cũ)
-  const backup = `${db.filename}.v${from}.bak`
-  if (from > 0 && db.filename && db.filename !== ':memory:' && !existsSync(backup)) db.query('VACUUM INTO ?').run(backup)
+  const backup = `${db.filename}.v${fromVersion}.bak`
+  if (fromVersion > 0 && db.filename && db.filename !== ':memory:' && !existsSync(backup)) db.query('VACUUM INTO ?').run(backup)
 
   // PRAGMA foreign_keys không có tác dụng trong transaction. Để bật thì DROP bảng cũ khi rebuild sẽ cascade xoá bảng mới vừa chép
   db.run('PRAGMA foreign_keys = OFF')
   try {
-    for (let v = from; v < list.length; v++) {
+    for (let version = fromVersion; version < allMigrations.length; version++) {
       db.transaction(() => {
-        const m = list[v]
-        typeof m === 'string' ? db.run(m) : m(db)
+        const migration = allMigrations[version]
+        typeof migration === 'string' ? db.run(migration) : migration(db)
         const broken = db.query('PRAGMA foreign_key_check').all()
-        if (broken.length) throw new Error(`migration ${v + 1}: foreign_key_check ${JSON.stringify(broken)}`)
-        db.run(`PRAGMA user_version = ${v + 1}`)
+        if (broken.length) throw new Error(`migration ${version + 1}: foreign_key_check ${JSON.stringify(broken)}`)
+        db.run(`PRAGMA user_version = ${version + 1}`)
       })()
     }
   } finally {
@@ -195,7 +195,7 @@ export function migrate(db: Database, list = migrations) {
   }
 }
 
-export function openDb(path: string) {
+export function openDatabase(path: string) {
   const db = new Database(path, { create: true, strict: true })
   db.run('PRAGMA journal_mode = WAL')
   db.run('PRAGMA synchronous = NORMAL')
@@ -205,4 +205,4 @@ export function openDb(path: string) {
   return db
 }
 
-export const db = openDb(config.dbPath)
+export const db = openDatabase(config.dbPath)

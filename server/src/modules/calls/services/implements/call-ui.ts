@@ -4,24 +4,24 @@ import type { CallMember, CallMessage, CallState } from '../../../../types'
 import type { CallAction } from '../../dtos/requests/call.request'
 
 type RawMember = { src: string | number; name?: string; avatar?: string; muted?: boolean; camOff?: boolean; state?: string }
-type Opened = { title?: string; text?: string; avatar?: string; video?: boolean; group?: boolean; noAnswer?: boolean; members?: RawMember[] }
-type Out = { message: (m: CallMessage) => void; video: (src: string, key: boolean, data: Uint8Array) => void }
+type CallInfo = { title?: string; text?: string; avatar?: string; video?: boolean; group?: boolean; noAnswer?: boolean; members?: RawMember[] }
+type CallOutput = { message: (m: CallMessage) => void; video: (src: string, key: boolean, data: Uint8Array) => void }
 type CallCamera = Pick<Camera, 'running' | 'start' | 'setProfile' | 'stop'> & { requestKey?(): void }
 
-const BLANK = {
+const EMPTY_STATE = {
   since: 0, video: false, group: false, noAnswer: false, muted: false, speakerOff: false, camera: false,
   peerCamOff: false, peerMuted: false, notice: '', members: [],
 } satisfies Partial<CallState>
 
-const toMembers = (list: RawMember[] = []): CallMember[] =>
+const normalizeMembers = (list: RawMember[] = []): CallMember[] =>
   list.map((m) => ({ src: String(m.src), name: m.name ?? '', avatar: m.avatar ?? '', muted: !!m.muted, camOff: !!m.camOff, state: m.state ?? '' }))
 
-const toProfile = (p: Partial<EncodeProfile>): EncodeProfile => ({
-  width: (p.width ?? 0) & ~1 || DEFAULT_PROFILE.width,
-  height: (p.height ?? 0) & ~1 || DEFAULT_PROFILE.height,
-  fps: p.fps! > 0 ? p.fps! : DEFAULT_PROFILE.fps,
-  bitrate: p.bitrate! > 0 ? p.bitrate! : DEFAULT_PROFILE.bitrate,
-  keyMs: p.keyMs! > 0 ? p.keyMs! : DEFAULT_PROFILE.keyMs,
+const normalizeProfile = (profile: Partial<EncodeProfile>): EncodeProfile => ({
+  width: (profile.width ?? 0) & ~1 || DEFAULT_PROFILE.width,
+  height: (profile.height ?? 0) & ~1 || DEFAULT_PROFILE.height,
+  fps: profile.fps! > 0 ? profile.fps! : DEFAULT_PROFILE.fps,
+  bitrate: profile.bitrate! > 0 ? profile.bitrate! : DEFAULT_PROFILE.bitrate,
+  keyMs: profile.keyMs! > 0 ? profile.keyMs! : DEFAULT_PROFILE.keyMs,
 })
 
 // Thay cửa sổ gọi của zalo-for-linux (native-engine/ui-client.js): engine gọi đúng các hàm này. Trạng thái và video
@@ -30,8 +30,8 @@ export class CallUi {
   state: CallState | null = null
   // Gọi đi: theo loại cuộc gọi; gọi đến: theo nút trả lời
   wantCamera = false
-  private incomingCb: { accept: (camStartOff: boolean) => void; reject: (why: string) => void } | null = null
-  private cb = {
+  private incomingCallbacks: { accept: (camStartOff: boolean) => void; reject: (why: string) => void } | null = null
+  private callbacks = {
     hangup: () => {},
     mute: (_on: boolean) => {},
     speaker: (_on: boolean) => {},
@@ -45,83 +45,83 @@ export class CallUi {
 
   constructor(
     private accountId: string,
-    private out: Out,
+    private output: CallOutput,
     private log: (msg: string) => void,
   ) {
-    const on = {
-      started: () => this.cb.camera(true),
+    const cameraEvents = {
+      started: () => this.callbacks.camera(true),
       frame: (f: EncodedFrame) => {
-        this.cb.videoFrame({ ...f, screen: false, w: this.profile.width, h: this.profile.height })
-        this.out.video('self', f.key, f.data)
+        this.callbacks.videoFrame({ ...f, screen: false, w: this.profile.width, h: this.profile.height })
+        this.output.video('self', f.key, f.data)
       },
       failed: (why: string) => {
         this.log(`camera: ${why}`)
         this.wantCamera = false
-        this.cb.camera(false)
+        this.callbacks.camera(false)
         this.notice('Không mở được camera')
       },
     }
-    this.camera = mediaMode() === 'app' ? new AppCamera(on) : new Camera(on)
+    this.camera = mediaMode() === 'app' ? new AppCamera(cameraEvents) : new Camera(cameraEvents)
     mediaLink.on('up', () => this.notice(''))
   }
 
   // ---- engine → ui ----
-  onHangup(cb: () => void) { this.cb.hangup = cb }
-  onMute(cb: (on: boolean) => void) { this.cb.mute = cb }
-  onSpeaker(cb: (on: boolean) => void) { this.cb.speaker = cb }
-  onCamera(cb: (on: boolean) => void) { this.cb.camera = cb }
-  onVideoFrame(cb: CallUi['cb']['videoFrame']) { this.cb.videoFrame = cb }
-  onTile(cb: (src: number, width: number) => void) { this.cb.tile = cb }
-  onNeedKey(cb: (why: string, src?: number) => void) { this.cb.needKey = cb }
+  onHangup(cb: () => void) { this.callbacks.hangup = cb }
+  onMute(cb: (on: boolean) => void) { this.callbacks.mute = cb }
+  onSpeaker(cb: (on: boolean) => void) { this.callbacks.speaker = cb }
+  onCamera(cb: (on: boolean) => void) { this.callbacks.camera = cb }
+  onVideoFrame(cb: CallUi['callbacks']['videoFrame']) { this.callbacks.videoFrame = cb }
+  onTile(cb: (src: number, width: number) => void) { this.callbacks.tile = cb }
+  onNeedKey(cb: (why: string, src?: number) => void) { this.callbacks.needKey = cb }
 
-  open({ title = '', text = '', avatar = '', video = false, group = false, members }: Opened) {
-    this.incomingCb = null
-    this.set({ ...BLANK, phase: 'outgoing', name: title, avatar, text, video, group, members: toMembers(members) })
+  open({ title = '', text = '', avatar = '', video = false, group = false, members }: CallInfo) {
+    this.incomingCallbacks = null
+    this.setState({ ...EMPTY_STATE, phase: 'outgoing', name: title, avatar, text, video, group, members: normalizeMembers(members) })
   }
 
-  incoming(o: Opened, accept: (camStartOff: boolean) => void, reject: (why: string) => void) {
-    this.incomingCb = { accept, reject }
-    this.set({
-      ...BLANK, phase: 'incoming', name: o.title ?? '', avatar: o.avatar ?? '', text: o.text ?? '',
-      video: !!o.video, group: !!o.group, noAnswer: !!o.noAnswer, members: toMembers(o.members),
+  incoming(info: CallInfo, accept: (camStartOff: boolean) => void, reject: (why: string) => void) {
+    this.incomingCallbacks = { accept, reject }
+    this.setState({
+      ...EMPTY_STATE, phase: 'incoming', name: info.title ?? '', avatar: info.avatar ?? '', text: info.text ?? '',
+      video: !!info.video, group: !!info.group, noAnswer: !!info.noAnswer, members: normalizeMembers(info.members),
     })
   }
 
   status(text: string, since = 0) {
-    const s = this.state
-    if (!s) return
-    const phase = since ? 'connected' : s.phase === 'incoming' ? 'connecting' : s.phase
+    const state = this.state
+    if (!state) return
+    const phase = since ? 'connected' : state.phase === 'incoming' ? 'connecting' : state.phase
     // Nối xong mà camera đang tắt: báo bên kia, như cửa sổ gọi của zalo-for-linux
-    if (phase === 'connected' && s.phase !== 'connected' && (s.video || s.group) && !this.wantCamera) this.cb.camera(false)
-    this.set({ ...s, phase, text, since })
+    if (phase === 'connected' && state.phase !== 'connected' && (state.video || state.group) && !this.wantCamera) this.callbacks.camera(false)
+    this.setState({ ...state, phase, text, since })
   }
 
   notice(text: string) {
-    if (this.state) this.set({ ...this.state, notice: text })
+    if (this.state) this.setState({ ...this.state, notice: text })
   }
 
   peer({ camOff, muted }: { camOff?: boolean; muted?: boolean }) {
-    if (this.state) this.set({ ...this.state, peerCamOff: !!camOff, peerMuted: !!muted })
+    if (this.state) this.setState({ ...this.state, peerCamOff: !!camOff, peerMuted: !!muted })
   }
 
   rename(name: string) {
-    if (this.state && name) this.set({ ...this.state, name })
+    if (this.state && name) this.setState({ ...this.state, name })
   }
 
   members(list: RawMember[]) {
-    if (this.state) this.set({ ...this.state, members: toMembers(list) })
+    if (this.state) this.setState({ ...this.state, members: normalizeMembers(list) })
   }
 
   speaking(src: number, on: boolean) {
-    this.out.message({ type: 'speaking', accountId: this.accountId, src: String(src), on: !!on })
+    this.output.message({ type: 'speaking', accountId: this.accountId, src: String(src), on: !!on })
   }
 
   video({ key, data, src }: { key: boolean; data: Uint8Array; src?: number }) {
-    this.out.video(src === undefined ? 'peer' : String(src), key, data)
+    this.output.video(src === undefined ? 'peer' : String(src), key, data)
   }
 
-  setCameraEncode(p: Partial<EncodeProfile>) {
-    const next = toProfile(p)
+  setCameraEncode(profile: Partial<EncodeProfile>) {
+    const next = normalizeProfile(profile)
     if (JSON.stringify(next) === JSON.stringify(this.profile)) return
     this.profile = next
     this.camera.setProfile(next)
@@ -133,55 +133,55 @@ export class CallUi {
   }
 
   close(text: string) {
-    this.incomingCb = null
+    this.incomingCallbacks = null
     this.state = null
     this.wantCamera = false
     this.camera.stop()
     this.profile = DEFAULT_PROFILE
-    this.out.message({ type: 'close', accountId: this.accountId, text: text || '' })
+    this.output.message({ type: 'close', accountId: this.accountId, text: text || '' })
   }
 
   // ---- người dùng → engine ----
   action({ action, on, src, width }: CallAction) {
-    const s = this.state
-    if (!s) return
-    const incoming = this.incomingCb
+    const state = this.state
+    if (!state) return
+    const incoming = this.incomingCallbacks
     switch (action) {
       case 'accept':
         if (!incoming) return
-        this.incomingCb = null
+        this.incomingCallbacks = null
         this.wantCamera = on
         return incoming.accept(!on)
       case 'reject':
       case 'hangup':
         if (incoming) {
-          this.incomingCb = null
+          this.incomingCallbacks = null
           return incoming.reject('reject')
         }
-        if (action === 'hangup') this.cb.hangup()
+        if (action === 'hangup') this.callbacks.hangup()
         return
       case 'mute':
-        this.set({ ...s, muted: on })
-        return this.cb.mute(on)
+        this.setState({ ...state, muted: on })
+        return this.callbacks.mute(on)
       case 'speaker':
-        this.set({ ...s, speakerOff: on })
-        return this.cb.speaker(on)
+        this.setState({ ...state, speakerOff: on })
+        return this.callbacks.speaker(on)
       case 'camera':
         this.wantCamera = on
-        if (!on) this.cb.camera(false)
-        return this.set({ ...s, notice: '' })
+        if (!on) this.callbacks.camera(false)
+        return this.setState({ ...state, notice: '' })
       case 'tile':
-        return this.cb.tile(Number(src) >>> 0, width)
+        return this.callbacks.tile(Number(src) >>> 0, width)
       case 'needkey':
-        return this.cb.needKey('window', src && src !== 'peer' ? Number(src) : undefined)
+        return this.callbacks.needKey('window', src && src !== 'peer' ? Number(src) : undefined)
     }
   }
 
-  private set(s: CallState) {
-    this.state = { ...s, camera: this.wantCamera }
-    const want = (s.video || s.group) && s.phase !== 'incoming' && this.wantCamera
-    if (want && !this.camera.running) this.camera.start(this.profile)
-    if (!want && this.camera.running) this.camera.stop()
-    this.out.message({ type: 'state', accountId: this.accountId, state: this.state })
+  private setState(state: CallState) {
+    this.state = { ...state, camera: this.wantCamera }
+    const shouldUseCamera = (state.video || state.group) && state.phase !== 'incoming' && this.wantCamera
+    if (shouldUseCamera && !this.camera.running) this.camera.start(this.profile)
+    if (!shouldUseCamera && this.camera.running) this.camera.stop()
+    this.output.message({ type: 'state', accountId: this.accountId, state: this.state })
   }
 }

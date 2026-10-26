@@ -8,19 +8,19 @@ import type IContactRepository from '../../repositories/interfaces/contact-repos
 import type { UpdateContactRequest } from '../../dtos/requests/contact.request'
 import type IContactService from '../interfaces/contact-service'
 
-const GROUP_INFO_BATCH = 50
-const ALIAS_PAGE = 100
+const GROUP_INFO_BATCH_SIZE = 50
+const ALIAS_PAGE_SIZE = 100
 const ALIAS_MAX_PAGES = 100
 // Version chỉ là tối ưu: quá hạn này thì đồng bộ đủ, phòng khi hiểu sai nghĩa version của Zalo
-const FULL_SYNC_AFTER = 24 * 60 * 60 * 1000
-const REGROUP_DELAY = 2000
-const PROFILE_BATCH = 100
+const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
+const GROUP_RESYNC_DELAY_MS = 2000
+const PROFILE_BATCH_SIZE = 100
 // Gom tin riêng đến dồn dập (nhất là lúc kéo bù tin) thành một lần gọi getUserInfo
-const PROFILE_DELAY = 500
+const PROFILE_FETCH_DELAY_MS = 500
 
 @injectable()
 export default class ContactService implements IContactService {
-  private regroup = new Map<string, ReturnType<typeof setTimeout>>()
+  private groupSyncTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private profileTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(
@@ -33,16 +33,16 @@ export default class ContactService implements IContactService {
     zalo.on('friend_event', (id, e) => this.onFriendEvent(id, e))
     zalo.on('group_event', (id, e) => this.onGroupEvent(id, e))
     zalo.on('message', (id, m) => {
-      if (m.type === ThreadType.User && !m.isSelf) this.scheduleProfiles(id)
+      if (m.type === ThreadType.User && !m.isSelf) this.scheduleProfileRefresh(id)
     })
     zalo.on('old_messages', (id, _batch, type) => {
-      if (type === ThreadType.User) this.scheduleProfiles(id)
+      if (type === ThreadType.User) this.scheduleProfileRefresh(id)
     })
   }
 
   async sync(accountId: string, api: API) {
-    const ver = api.getContext().extraVer
-    await this.unlessUnchanged(accountId, 'friends', ver?.friend, async () => {
+    const versions = api.getContext().extraVer
+    await this.syncIfChanged(accountId, 'friends', versions?.friend, async () => {
       const friends = await api.getAllFriends()
       this.contacts.syncFriends(
         accountId,
@@ -55,12 +55,12 @@ export default class ContactService implements IContactService {
         })),
       )
     })
-    await this.unlessUnchanged(accountId, 'aliases', ver?.alias, async () => {
+    await this.syncIfChanged(accountId, 'aliases', versions?.alias, async () => {
       const items = []
       for (let page = 1; page <= ALIAS_MAX_PAGES; page++) {
-        const { items: batch } = await api.getAliasList(ALIAS_PAGE, page)
+        const { items: batch } = await api.getAliasList(ALIAS_PAGE_SIZE, page)
         items.push(...batch)
-        if (batch.length < ALIAS_PAGE) break
+        if (batch.length < ALIAS_PAGE_SIZE) break
       }
       this.contacts.setAliases(accountId, items)
     })
@@ -95,9 +95,9 @@ export default class ContactService implements IContactService {
     return this.contacts.get(id)!
   }
 
-  private async unlessUnchanged(accountId: string, key: string, version: string | undefined, run: () => Promise<void>) {
+  private async syncIfChanged(accountId: string, key: string, version: string | undefined, run: () => Promise<void>) {
     const last = this.contacts.version(accountId, key)
-    if (version && last?.value === version && Date.now() - last.synced_at < FULL_SYNC_AFTER) return
+    if (version && last?.value === version && Date.now() - last.synced_at < FULL_SYNC_INTERVAL_MS) return
     await run()
     if (version) this.contacts.setVersion(accountId, key, version)
   }
@@ -107,17 +107,17 @@ export default class ContactService implements IContactService {
     const { gridVerMap } = await api.getAllGroups()
     const known = this.contacts.groupVersions(accountId)
     const changed = Object.keys(gridVerMap).filter((id) => {
-      const g = known.get(id)
-      return !g?.isMember || g.version !== gridVerMap[id]
+      const group = known.get(id)
+      return !group?.isMember || group.version !== gridVerMap[id]
     })
-    for (let i = 0; i < changed.length; i += GROUP_INFO_BATCH) {
-      const ids = changed.slice(i, i + GROUP_INFO_BATCH)
+    for (let i = 0; i < changed.length; i += GROUP_INFO_BATCH_SIZE) {
+      const ids = changed.slice(i, i + GROUP_INFO_BATCH_SIZE)
       const { gridInfoMap } = await api.getGroupInfo(ids)
       this.contacts.upsertGroups(
         accountId,
         ids.map((id) => {
-          const g = gridInfoMap[id]
-          return { id, name: g?.name ?? null, avatar: g?.avt || g?.fullAvt || null, version: gridVerMap[id] }
+          const group = gridInfoMap[id]
+          return { id, name: group?.name ?? null, avatar: group?.avt || group?.fullAvt || null, version: gridVerMap[id] }
         }),
       )
     }
@@ -127,7 +127,7 @@ export default class ContactService implements IContactService {
   // Người lạ chỉ có tên lấy từ tin nhắn: hỏi Zalo tên và ảnh theo lô. saveProfiles đánh dấu cả lô đã hỏi nên vòng lặp luôn dừng
   private async refreshProfiles(accountId: string, api: API) {
     let changed = false
-    for (let ids = this.contacts.missingProfiles(accountId, PROFILE_BATCH); ids.length; ids = this.contacts.missingProfiles(accountId, PROFILE_BATCH)) {
+    for (let ids = this.contacts.missingProfiles(accountId, PROFILE_BATCH_SIZE); ids.length; ids = this.contacts.missingProfiles(accountId, PROFILE_BATCH_SIZE)) {
       const { changed_profiles } = await api.getUserInfo(ids)
       this.contacts.saveProfiles(
         accountId,
@@ -139,60 +139,60 @@ export default class ContactService implements IContactService {
     return changed
   }
 
-  private scheduleProfiles(accountId: string) {
+  private scheduleProfileRefresh(accountId: string) {
     if (this.profileTimers.has(accountId)) return
     this.profileTimers.set(
       accountId,
       setTimeout(() => {
         this.profileTimers.delete(accountId)
-        const api = this.zalo.get(accountId)
+        const api = this.zalo.getApi(accountId)
         if (!api) return
         this.refreshProfiles(accountId, api)
           .then((changed) => changed && broadcast({ type: 'threads', accountId }))
           .catch((err) => logger.error('fetch profiles', { accountId, err }))
-      }, PROFILE_DELAY),
+      }, PROFILE_FETCH_DELAY_MS),
     )
   }
 
-  private onFriendEvent(accountId: string, e: FriendEvent) {
-    const change = relationChange(accountId, e)
+  private onFriendEvent(accountId: string, event: FriendEvent) {
+    const change = getRelationChange(accountId, event)
     if (!change) return
     this.contacts.setRelation(accountId, change.uid, change.relation)
     this.contacts.link(accountId, change.uid)
   }
 
   // Sự kiện nhóm chỉ là tín hiệu "nhóm này vừa đổi": lấy lại info theo version thay vì đọc từng loại sự kiện
-  private onGroupEvent(accountId: string, e: GroupEvent) {
-    this.contacts.invalidateGroup(accountId, e.threadId)
-    clearTimeout(this.regroup.get(accountId))
-    this.regroup.set(
+  private onGroupEvent(accountId: string, event: GroupEvent) {
+    this.contacts.invalidateGroup(accountId, event.threadId)
+    clearTimeout(this.groupSyncTimers.get(accountId))
+    this.groupSyncTimers.set(
       accountId,
       setTimeout(() => {
-        this.regroup.delete(accountId)
-        const api = this.zalo.get(accountId)
+        this.groupSyncTimers.delete(accountId)
+        const api = this.zalo.getApi(accountId)
         if (!api) return
         this.syncGroups(accountId, api)
           .then(() => broadcast({ type: 'threads', accountId }))
           .catch((err) => logger.error('sync groups', { accountId, err }))
-      }, REGROUP_DELAY),
+      }, GROUP_RESYNC_DELAY_MS),
     )
   }
 }
 
 // ADD/REMOVE/BLOCK mang uid; lời mời mang fromUid/toUid nên phải xem bên nào là mình
-function relationChange(accountId: string, e: FriendEvent): { uid: string; relation: Relation } | undefined {
-  switch (e.type) {
+function getRelationChange(accountId: string, event: FriendEvent): { uid: string; relation: Relation } | undefined {
+  switch (event.type) {
     case FriendEventType.ADD:
-      return { uid: e.data, relation: 'friend' }
+      return { uid: event.data, relation: 'friend' }
     case FriendEventType.REMOVE:
     case FriendEventType.UNBLOCK:
-      return { uid: e.data, relation: 'none' }
+      return { uid: event.data, relation: 'none' }
     case FriendEventType.BLOCK:
-      return { uid: e.data, relation: 'blocked' }
+      return { uid: event.data, relation: 'blocked' }
     case FriendEventType.REQUEST:
-      return e.data.fromUid === accountId ? { uid: e.data.toUid, relation: 'sent' } : { uid: e.data.fromUid, relation: 'received' }
+      return event.data.fromUid === accountId ? { uid: event.data.toUid, relation: 'sent' } : { uid: event.data.fromUid, relation: 'received' }
     case FriendEventType.UNDO_REQUEST:
     case FriendEventType.REJECT_REQUEST:
-      return { uid: e.data.fromUid === accountId ? e.data.toUid : e.data.fromUid, relation: 'none' }
+      return { uid: event.data.fromUid === accountId ? event.data.toUid : event.data.fromUid, relation: 'none' }
   }
 }

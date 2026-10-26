@@ -3,7 +3,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/shared/components/ui/toggle-grou
 import { type Theme, useThemeStore } from "@/shared/stores/theme.store"
 import { FONT_SIZES, THEMES } from "@/app/settings/constants/appearance.constants"
 
-export function AppearanceSettings() {
+export const AppearanceSettings = () => {
   const { theme, fontSize, setTheme, setFontSize } = useThemeStore()
   return (
     <FieldSet>

@@ -1,4 +1,4 @@
-export const qk = {
+export const queryKeys = {
   accounts: ["accounts"],
   threads: ["threads"],
   threadContacts: (accountId: string) => ["threads", "contacts", accountId],

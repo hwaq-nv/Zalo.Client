@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { websocket } from 'hono/bun'
 import { cors } from 'hono/cors'
 import { config } from './config'
-import { auth, eventsWs, useExceptionHandler, useLogger, useOpenApi, useTracing } from './core'
+import { authMiddleware, eventsWebSocket, useExceptionHandler, useLogger, useOpenApi, useTracing } from './core'
 import { createContainer } from './di/dependency-injection'
 import { TOKENS } from './di/tokens'
 import { accountRoutes } from './modules/accounts'
@@ -29,11 +29,11 @@ useTracing(app)
 useLogger(app)
 app.use(cors())
 useOpenApi(app)
-app.use(auth)
+app.use(authMiddleware)
 useExceptionHandler(app)
 
 
-app.get('/ws', eventsWs)
+app.get('/ws', eventsWebSocket)
 app.route('/accounts', accountRoutes(accounts))
 app.route('/contacts', contactRoutes(contacts))
 app.route('/threads', threadRoutes(threads))

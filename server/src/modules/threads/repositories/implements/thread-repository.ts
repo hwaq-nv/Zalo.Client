@@ -32,6 +32,22 @@ const LIST_THREADS_SQL = `SELECT t.account_id, a.name AS account_name, t.id, t.t
   LEFT JOIN groups g ON t.type = 1 AND g.account_id = t.account_id AND g.id = t.id
   LEFT JOIN messages m ON m.account_id = t.account_id AND m.msg_id = t.last_msg_id`
 
+// Người hoặc nhóm trong danh bạ của một nick, dạng ThreadRow (kể cả chưa nhắn); userWhere/groupWhere lọc từng nhánh
+const contactRowsSql = (userWhere: string, groupWhere: string) => `
+  SELECT u.account_id, a.name AS account_name, u.id, 0 AS type, COALESCE(c.name, u.alias, u.display_name, u.zalo_name) AS name,
+         u.avatar, t.last_msg_at, NULL AS preview, COALESCE(t.unread, 0) AS unread, u.contact_id
+  FROM users u
+  JOIN accounts a ON a.id = u.account_id
+  LEFT JOIN contacts c ON c.id = u.contact_id
+  LEFT JOIN threads t ON t.account_id = u.account_id AND t.id = u.id
+  WHERE u.account_id = $accountId AND ${userWhere}
+  UNION ALL
+  SELECT g.account_id, a.name, g.id, 1, g.name, g.avatar, t.last_msg_at, NULL, COALESCE(t.unread, 0), NULL
+  FROM groups g
+  JOIN accounts a ON a.id = g.account_id
+  LEFT JOIN threads t ON t.account_id = g.account_id AND t.id = g.id
+  WHERE g.account_id = $accountId AND ${groupWhere}`
+
 type ListRow = Omit<ThreadRow, 'preview'> & { msg_type: string | null; text: string | null; recalled: 0 | 1 | null; action: string | null }
 
 // Preview tính lúc đọc từ tin cuối nên thu hồi xong là tự đúng
@@ -52,24 +68,11 @@ export default class ThreadRepository implements IThreadRepository {
   }
 
   contacts(accountId: string) {
-    return this.db
-      .query(
-        `SELECT u.account_id, a.name AS account_name, u.id, 0 AS type, COALESCE(c.name, u.alias, u.display_name, u.zalo_name) AS name,
-                u.avatar, t.last_msg_at, NULL AS preview, COALESCE(t.unread, 0) AS unread, u.contact_id
-         FROM users u
-         JOIN accounts a ON a.id = u.account_id
-         LEFT JOIN contacts c ON c.id = u.contact_id
-         LEFT JOIN threads t ON t.account_id = u.account_id AND t.id = u.id
-         WHERE u.account_id = $accountId AND u.relation = 'friend'
-         UNION ALL
-         SELECT g.account_id, a.name, g.id, 1, g.name, g.avatar, t.last_msg_at, NULL, COALESCE(t.unread, 0), NULL
-         FROM groups g
-         JOIN accounts a ON a.id = g.account_id
-         LEFT JOIN threads t ON t.account_id = g.account_id AND t.id = g.id
-         WHERE g.account_id = $accountId AND g.is_member = 1
-         ORDER BY name`,
-      )
-      .all({ accountId }) as ThreadRow[]
+    return this.db.query(`${contactRowsSql("u.relation = 'friend'", 'g.is_member = 1')} ORDER BY name`).all({ accountId }) as ThreadRow[]
+  }
+
+  get(accountId: string, id: string) {
+    return (this.db.query(`${contactRowsSql('u.id = $id', 'g.id = $id')} LIMIT 1`).get({ accountId, id }) as ThreadRow | null) ?? undefined
   }
 
   typeOf(accountId: string, id: string) {

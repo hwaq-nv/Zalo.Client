@@ -23,7 +23,7 @@ export default interface IContactRepository {
   invalidateGroup(accountId: string, groupId: string): void
   version(accountId: string, key: string): { value: string; synced_at: number } | undefined
   setVersion(accountId: string, key: string, value: string): void
-  // Người lạ mới biết qua tin nhắn, chưa có hồ sơ Zalo (synced_at NULL)
+  // Người lạ mới biết qua tin nhắn (riêng hoặc trong nhóm), chưa có hồ sơ Zalo (synced_at NULL)
   missingProfiles(accountId: string, limit: number): string[]
   // Đánh dấu cả lô đã hỏi, kể cả người Zalo không trả hồ sơ, để không hỏi lại mãi
   saveProfiles(accountId: string, askedIds: string[], profiles: Profile[]): void

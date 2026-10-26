@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { inject, injectable } from 'inversify'
-import { ThreadType, type Message, type Reaction, type SendMessageQuote, type TMessage, type TReaction } from 'zca-js'
+import { ThreadType, type DeliveredMessage, type Message, type Reaction, type SeenMessage, type SendMessageQuote, type TMessage, type TReaction, type Typing } from 'zca-js'
 import { BadRequestError, broadcast, ConflictError, buildFtsQuery, logger, NotFoundError, buildSearchText } from '../../../../core'
 import { TOKENS } from '../../../../di/tokens'
 import { ZaloClient } from '../../../../third-party/zalo/zalo-client'
@@ -51,6 +51,9 @@ export default class MessageService implements IMessageService {
     zalo.on('old_messages', (id, batch, type) => this.handleOldMessages(id, batch, type))
     zalo.on('reaction', (id, r) => this.receiveReactions(id, [r]))
     zalo.on('old_reactions', (id, batch) => this.receiveReactions(id, batch))
+    zalo.on('seen_messages', (id, seens) => this.receiveReceipts(id, seens))
+    zalo.on('delivered_messages', (id, delivereds) => this.receiveReceipts(id, delivereds))
+    zalo.on('typing', (id, t) => this.onTyping(id, t))
   }
 
   list(accountId: string, threadId: string, { before, limit }: ListMessagesRequest) {
@@ -128,6 +131,37 @@ export default class MessageService implements IMessageService {
     }
   }
 
+  receipts(accountId: string, threadId: string) {
+    return this.messages.receipts(accountId, threadId)
+  }
+
+  // Zalo báo "đã nhận / đã xem tới tin X"; tuỳ loại sự kiện X nằm ở msgId hoặc realMsgId nên lấy cái có trong DB.
+  // Chưa có tin X thì bỏ qua: không biết X đứng đâu so với các tin khác
+  private receiveReceipts(accountId: string, events: (SeenMessage | DeliveredMessage)[]) {
+    const changed = new Set<string>()
+    this.db.transaction(() => {
+      for (const e of events) {
+        const ids = [e.data.msgId, 'realMsgId' in e.data ? e.data.realMsgId : undefined]
+        const message = ids.map((id) => (id ? this.messages.get(accountId, String(id)) : undefined)).find((m) => m?.thread_id === e.threadId)
+        if (!message) continue
+        const delivered = 'deliveredUids' in e.data ? e.data.deliveredUids : []
+        // Tin riêng: người xem chính là người kia (threadId)
+        const seen = 'seenUids' in e.data ? e.data.seenUids : [e.threadId]
+        for (const [uids, isSeen] of [[delivered, false], [seen, true]] as const)
+          for (const uid of uids)
+            if (uid !== accountId && this.messages.receipt(accountId, e.threadId, uid, Number(message.msg_id), isSeen)) changed.add(e.threadId)
+      }
+    })()
+    for (const threadId of changed) broadcast({ type: 'receipt', accountId, threadId })
+  }
+
+  // Không lưu: chỉ chuyển tiếp cho client hiện "đang soạn tin"
+  private onTyping(accountId: string, typing: Typing) {
+    const userId = typing.data.uid
+    if (userId === accountId) return
+    broadcast({ type: 'typing', accountId, threadId: typing.threadId, userId, name: this.threads.profile(accountId, userId)?.name ?? null })
+  }
+
   async recall(accountId: string, threadId: string, msgId: string) {
     const message = this.messages.get(accountId, msgId)
     if (!message || message.thread_id !== threadId) throw new NotFoundError('message not found')
@@ -151,7 +185,7 @@ export default class MessageService implements IMessageService {
 
   private storeMessage(accountId: string, message: Message, read: boolean): MessageRow | undefined {
     const data = message.data
-    const row: Omit<MessageRow, 'id' | 'reactions'> = {
+    const row: Omit<MessageRow, 'id' | 'reactions' | 'from_avatar'> = {
       account_id: accountId,
       msg_id: data.msgId,
       thread_id: message.threadId,

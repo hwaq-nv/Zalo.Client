@@ -118,7 +118,7 @@ export default class ContactRepository implements IContactRepository {
   }
 
   missingProfiles(accountId: string, limit: number) {
-    const rows = this.db.query(`SELECT id FROM users WHERE account_id = ? AND synced_at IS NULL AND ${LINKABLE_USER_FILTER} LIMIT ?`).all(accountId, limit) as { id: string }[]
+    const rows = this.db.query('SELECT id FROM users WHERE account_id = ? AND synced_at IS NULL LIMIT ?').all(accountId, limit) as { id: string }[]
     return rows.map((r) => r.id)
   }
 

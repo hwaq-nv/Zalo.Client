@@ -1,10 +1,10 @@
-import type { MessageRow, ReactionCount, Sticker } from '../../../../types'
+import type { MessageRow, ReactionCount, Receipt, Sticker } from '../../../../types'
 
 export type ReactionRow = { account_id: string; msg_id: string; id: string; user_id: string; icon: string; ts: number }
 
 export default interface IMessageRepository {
   // Trả id mới, hoặc undefined nếu tin đã có (Zalo gửi lại tin cũ khi nối lại)
-  insert(message: Omit<MessageRow, 'id' | 'reactions'>): number | undefined
+  insert(message: Omit<MessageRow, 'id' | 'reactions' | 'from_avatar'>): number | undefined
   // Đánh index tìm kiếm cho tin vừa chèn; body đã bỏ dấu
   index(id: number, body: string): void
   // Mới nhất trước; before = msg_id tin cũ nhất đã tải
@@ -17,6 +17,9 @@ export default interface IMessageRepository {
   react(r: ReactionRow): boolean
   // Gộp theo icon, nhiều nhất trước; tin không có cảm xúc thì không có trong Map
   reactions(accountId: string, msgIds: string[]): Map<string, ReactionCount[]>
+  // Chỉ dời mốc lên; seen thì kéo luôn delivered (đã xem là đã nhận). false nếu không đổi gì
+  receipt(accountId: string, threadId: string, userId: string, msgId: number, seen: boolean): boolean
+  receipts(accountId: string, threadId: string): Receipt[]
   // Sticker mình đã gửi (mọi nick), mới dùng nhất trước, không lặp
   recentStickers(limit: number): Sticker[]
   // Mốc kéo bù: mọi tin có msgId ≤ mốc đều đã nằm trong DB

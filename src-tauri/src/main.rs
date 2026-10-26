@@ -3,8 +3,14 @@
 
 fn main() {
     #[cfg(target_os = "linux")]
-    if std::env::var_os("GST_PLUGIN_FEATURE_RANK").is_none() {
-        unsafe { std::env::set_var("GST_PLUGIN_FEATURE_RANK", "nvh264dec:NONE,vah264dec:NONE") };
+    for (key, value) in [
+        ("GST_PLUGIN_FEATURE_RANK", "nvh264dec:NONE,vah264dec:NONE"),
+        ("WEBKIT_USE_SKIA_FOR_COMPOSITION", "0"),
+        ("WEBKIT_DISABLE_DMABUF_ATLAS", "1"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            unsafe { std::env::set_var(key, value) };
+        }
     }
     client_lib::run()
 }

@@ -19,8 +19,19 @@ export const MessageRow = z.object({
   raw: z.string(),
   recalled: z.literal([0, 1]),
   reactions: z.array(ReactionCount).optional(), // chỉ có khi đọc danh sách tin
+  from_avatar: z.string().nullable().optional(), // ảnh hiện tại của người gửi, chỉ có khi đọc danh sách tin
 })
 export type MessageRow = z.infer<typeof MessageRow>
+
+// Mốc đã nhận / đã xem của một người trong hội thoại (0 = chưa có); so với Number(msg_id) tin của mình
+export const Receipt = z.object({
+  user_id: z.string(),
+  name: z.string().nullable(),
+  avatar: z.string().nullable(),
+  delivered_msg_id: z.number(),
+  seen_msg_id: z.number(),
+})
+export type Receipt = z.infer<typeof Receipt>
 
 // Ảnh: https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid={id}&size=130 (công khai, không cần đăng nhập)
 export const Sticker = z.object({ id: z.number().int(), cateId: z.number().int(), type: z.number().int() })

@@ -5,15 +5,33 @@ import { queryKeys } from "@/shared/constants/api.constants"
 
 const invalidate = (queryKey: unknown[]) => queryClient.invalidateQueries({ queryKey })
 
+type TypingEvent = Extract<ServerEvent, { type: "typing" }>
+// Zalo gửi typing lặp lại khi người kia còn gõ; im lâu hơn mức này thì coi như thôi
+const TYPING_TTL_MS = 6000
+
 function handleServerEvent(e: ServerEvent) {
   switch (e.type) {
     case "account":
       return invalidate(queryKeys.accounts)
     case "threads":
-      return invalidate(queryKeys.threads)
+      invalidate(queryKeys.threads)
+      // Hồ sơ (tên, ảnh) vừa lấy về cũng hiện ở khung chat
+      return invalidate(queryKeys.messages(e.accountId))
     case "message":
       invalidate(queryKeys.threads)
+      // Người đang soạn đã gửi xong
+      queryClient.setQueryData<TypingEvent | null>(queryKeys.typing(e.message.account_id, e.message.thread_id), (t) =>
+        t?.userId === e.message.from_id ? null : t,
+      )
       return invalidate(queryKeys.messages(e.message.account_id, e.message.thread_id))
+    case "receipt":
+      return invalidate(queryKeys.receipts(e.accountId, e.threadId))
+    case "typing": {
+      const key = queryKeys.typing(e.accountId, e.threadId)
+      queryClient.setQueryData(key, e)
+      setTimeout(() => queryClient.setQueryData<TypingEvent | null>(key, (t) => (t === e ? null : t)), TYPING_TTL_MS)
+      return
+    }
     case "undo":
       return invalidate(queryKeys.messages(e.accountId))
     case "reaction":

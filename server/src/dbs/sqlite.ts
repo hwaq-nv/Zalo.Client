@@ -168,6 +168,16 @@ export const migrations: Migration[] = [
      ts         INTEGER NOT NULL,
      PRIMARY KEY (account_id, msg_id, id)
    ) STRICT, WITHOUT ROWID;`,
+  // v7: tin mới nhất của mình mà từng người đã nhận / đã xem, theo từng hội thoại.
+  // Zalo chỉ báo "đã xem tới tin X" nên giữ mốc lớn nhất; msgId Zalo tăng dần và vừa INTEGER
+  `CREATE TABLE receipts (
+     account_id       TEXT    NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     thread_id        TEXT    NOT NULL,
+     user_id          TEXT    NOT NULL,     -- người nhận; hội thoại riêng thì = thread_id
+     delivered_msg_id INTEGER NOT NULL DEFAULT 0,
+     seen_msg_id      INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (account_id, thread_id, user_id)
+   ) STRICT, WITHOUT ROWID;`,
 ]
 
 export function migrate(db: Database, allMigrations = migrations) {

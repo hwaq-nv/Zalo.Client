@@ -14,6 +14,8 @@ export default interface IThreadRepository {
   list(accountId?: string): ThreadRow[]
   // Bạn bè và nhóm đang tham gia của một nick, kể cả chưa nhắn
   contacts(accountId: string): ThreadRow[]
+  // Một người hoặc nhóm bất kỳ nick này biết (kể cả người lạ chưa nhắn), không có preview
+  get(accountId: string, id: string): ThreadRow | undefined
   // Thread có sẵn, hoặc suy ra từ danh bạ: 0 nếu là người, 1 nếu là nhóm
   typeOf(accountId: string, id: string): ThreadType | undefined
   // Tên (cùng thứ tự ưu tiên như list) và avatar của một người hoặc nhóm

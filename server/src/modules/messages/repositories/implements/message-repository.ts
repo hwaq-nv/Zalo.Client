@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import { inject, injectable } from 'inversify'
 import { TOKENS } from '../../../../di/tokens'
-import type { MessageRow, ReactionCount, Sticker } from '../../../../types'
+import type { MessageRow, ReactionCount, Receipt, Sticker } from '../../../../types'
 import type IMessageRepository from '../interfaces/message-repository'
 import type { ReactionRow } from '../interfaces/message-repository'
 
@@ -9,7 +9,7 @@ import type { ReactionRow } from '../interfaces/message-repository'
 export default class MessageRepository implements IMessageRepository {
   constructor(@inject(TOKENS.Database) private db: Database) {}
 
-  insert(message: Omit<MessageRow, 'id' | 'reactions'>) {
+  insert(message: Omit<MessageRow, 'id' | 'reactions' | 'from_avatar'>) {
     const result = this.db
       .query(
         `INSERT INTO messages (account_id, msg_id, thread_id, thread_type, from_id, from_name, is_self, ts, msg_type, text, raw, recalled)
@@ -27,9 +27,13 @@ export default class MessageRepository implements IMessageRepository {
   // Cursor (ts, msg_id): nhiều ảnh gửi cùng lúc trùng ts.
   // Hai câu riêng thay vì `$before IS NULL OR ...`: dạng OR làm SQLite không seek theo ts, trang sâu phải quét từ đầu
   list(accountId: string, threadId: string, before: string | undefined, limit: number) {
-    const cursorFilter = before === undefined ? '' : 'AND (ts, msg_id) < (SELECT ts, msg_id FROM messages WHERE account_id = $accountId AND msg_id = $before)'
+    const cursorFilter = before === undefined ? '' : 'AND (m.ts, m.msg_id) < (SELECT ts, msg_id FROM messages WHERE account_id = $accountId AND msg_id = $before)'
     return this.db
-      .query(`SELECT * FROM messages WHERE account_id = $accountId AND thread_id = $threadId ${cursorFilter} ORDER BY ts DESC, msg_id DESC LIMIT $limit`)
+      .query(
+        `SELECT m.*, u.avatar AS from_avatar FROM messages m
+         LEFT JOIN users u ON u.account_id = m.account_id AND u.id = m.from_id
+         WHERE m.account_id = $accountId AND m.thread_id = $threadId ${cursorFilter} ORDER BY m.ts DESC, m.msg_id DESC LIMIT $limit`,
+      )
       .all({ accountId, threadId, before: before ?? null, limit }) as MessageRow[]
   }
 
@@ -75,6 +79,31 @@ export default class MessageRepository implements IMessageRepository {
     const reactionsByMsg = new Map<string, ReactionCount[]>()
     for (const { msg_id, icon, count, mine } of rows) reactionsByMsg.set(msg_id, [...(reactionsByMsg.get(msg_id) ?? []), { icon, count, mine: mine === 1 }])
     return reactionsByMsg
+  }
+
+  receipt(accountId: string, threadId: string, userId: string, msgId: number, seen: boolean) {
+    const seenId = seen ? msgId : 0
+    return (
+      this.db
+        .query(
+          `INSERT INTO receipts (account_id, thread_id, user_id, delivered_msg_id, seen_msg_id) VALUES ($accountId, $threadId, $userId, $msgId, $seenId)
+           ON CONFLICT DO UPDATE SET delivered_msg_id = max(delivered_msg_id, excluded.delivered_msg_id), seen_msg_id = max(seen_msg_id, excluded.seen_msg_id)
+           WHERE excluded.delivered_msg_id > delivered_msg_id OR excluded.seen_msg_id > seen_msg_id`,
+        )
+        .run({ accountId, threadId, userId, msgId, seenId }).changes > 0
+    )
+  }
+
+  receipts(accountId: string, threadId: string) {
+    return this.db
+      .query(
+        `SELECT r.user_id, COALESCE(c.name, u.alias, u.display_name, u.zalo_name) AS name, u.avatar, r.delivered_msg_id, r.seen_msg_id
+         FROM receipts r
+         LEFT JOIN users u ON u.account_id = r.account_id AND u.id = r.user_id
+         LEFT JOIN contacts c ON c.id = u.contact_id
+         WHERE r.account_id = ? AND r.thread_id = ? ORDER BY r.seen_msg_id DESC`,
+      )
+      .all(accountId, threadId) as Receipt[]
   }
 
   recentStickers(limit: number) {

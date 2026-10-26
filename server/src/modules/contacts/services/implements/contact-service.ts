@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify'
-import { FriendEventType, ThreadType, type API, type FriendEvent, type GroupEvent } from 'zca-js'
+import { FriendEventType, type API, type FriendEvent, type GroupEvent } from 'zca-js'
 import { BadRequestError, broadcast, ConflictError, logger, normalizePhone, NotFoundError } from '../../../../core'
 import { TOKENS } from '../../../../di/tokens'
 import { ZaloClient } from '../../../../third-party/zalo/zalo-client'
@@ -33,11 +33,9 @@ export default class ContactService implements IContactService {
     zalo.on('friend_event', (id, e) => this.onFriendEvent(id, e))
     zalo.on('group_event', (id, e) => this.onGroupEvent(id, e))
     zalo.on('message', (id, m) => {
-      if (m.type === ThreadType.User && !m.isSelf) this.scheduleProfileRefresh(id)
+      if (!m.isSelf) this.scheduleProfileRefresh(id)
     })
-    zalo.on('old_messages', (id, _batch, type) => {
-      if (type === ThreadType.User) this.scheduleProfileRefresh(id)
-    })
+    zalo.on('old_messages', (id) => this.scheduleProfileRefresh(id))
   }
 
   async sync(accountId: string, api: API) {

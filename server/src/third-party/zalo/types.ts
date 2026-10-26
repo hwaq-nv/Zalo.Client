@@ -1,4 +1,4 @@
-import { API, FriendEvent, GroupEvent, Message, Reaction, ThreadType, Undo } from "zca-js"
+import { API, DeliveredMessage, FriendEvent, GroupEvent, Message, Reaction, SeenMessage, ThreadType, Typing, Undo } from "zca-js"
 import { AccountStatus } from "../../types"
 
 export type ZaloEvents = {
@@ -7,6 +7,9 @@ export type ZaloEvents = {
   old_messages: [accountId: string, messages: Message[], type: ThreadType]
   undo: [accountId: string, undo: Undo]
   reaction: [accountId: string, reaction: Reaction]
+  seen_messages: [accountId: string, seens: SeenMessage[]]
+  delivered_messages: [accountId: string, delivereds: DeliveredMessage[]]
+  typing: [accountId: string, typing: Typing]
   old_reactions: [accountId: string, reactions: Reaction[], isGroup: boolean]
   friend_event: [accountId: string, event: FriendEvent]
   group_event: [accountId: string, event: GroupEvent]

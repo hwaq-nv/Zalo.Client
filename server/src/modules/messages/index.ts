@@ -10,7 +10,7 @@ import {
   SendMessageRequest,
   SendStickerRequest,
 } from './dtos/requests/message.request'
-import { MessageRow, Sticker } from './dtos/responses/message.response'
+import { MessageRow, Receipt, Sticker } from './dtos/responses/message.response'
 import type IMessageService from './services/interfaces/message-service'
 
 export const messageRoutes = (messages: IMessageService) =>
@@ -23,6 +23,10 @@ export const messageRoutes = (messages: IMessageService) =>
     .get('/:accountId/:threadId/messages', apiDocs('messages', z.array(MessageRow)), validate('query', ListMessagesRequest), (c) => {
       const { accountId, threadId } = c.req.param()
       return successResponse(c, messages.list(accountId, threadId, c.req.valid('query')))
+    })
+    .get('/:accountId/:threadId/receipts', apiDocs('messages', z.array(Receipt)), (c) => {
+      const { accountId, threadId } = c.req.param()
+      return successResponse(c, messages.receipts(accountId, threadId))
     })
     .post('/:accountId/:threadId/messages', apiDocs('messages'), validate('json', SendMessageRequest), async (c) => {
       const { accountId, threadId } = c.req.param()

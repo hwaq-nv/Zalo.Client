@@ -1,4 +1,4 @@
-import type { MessageRow, Sticker } from '../../../../types'
+import type { MessageRow, Receipt, Sticker } from '../../../../types'
 import type {
   ListMessagesRequest,
   ReactRequest,
@@ -26,4 +26,6 @@ export default interface IMessageService {
   react(accountId: string, threadId: string, msgId: string, body: ReactRequest): Promise<void>
   // Thu hồi tin của mình; kết quả đi qua WS 'undo'
   recall(accountId: string, threadId: string, msgId: string): Promise<void>
+  // Mốc đã nhận / đã xem của từng người trong hội thoại; đổi thì WS 'receipt'
+  receipts(accountId: string, threadId: string): Receipt[]
 }

@@ -1,0 +1,39 @@
+name: Đề xuất tính năng
+description: Tính năng mới hoặc cải tiến cho app
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Vấn đề
+      description: Đang gặp khó khăn gì khi dùng app?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Mong muốn
+      description: App nên hoạt động thế nào?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Phần liên quan
+      options:
+        - Client (app desktop)
+        - Server
+        - Cả hai
+        - Không rõ
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Cách khác đã thử
+  - type: textarea
+    id: context
+    attributes:
+      label: Thông tin thêm
+      description: Ảnh chụp, ví dụ, link...

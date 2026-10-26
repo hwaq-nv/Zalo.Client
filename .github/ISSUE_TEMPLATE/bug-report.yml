@@ -1,0 +1,70 @@
+name: Báo lỗi
+description: App chạy sai, crash hoặc không như mong đợi
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Không dán cookie, IMEI, token hay file trong `server/data/`** — đó là phiên đăng nhập Zalo của bạn.
+  - type: textarea
+    id: what
+    attributes:
+      label: Lỗi gì?
+      description: Mô tả ngắn chuyện đã xảy ra.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Cách tái hiện
+      placeholder: |
+        1. Mở ...
+        2. Bấm ...
+        3. Thấy lỗi ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Mong đợi
+      description: Đáng lẽ app phải làm gì?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Phần liên quan
+      options:
+        - Client (app desktop)
+        - Server
+        - Cả hai
+        - Không rõ
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Nền tảng
+      multiple: true
+      options:
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Phiên bản / commit
+      placeholder: v0.1.0 hoặc 06f53c4
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: Log server hoặc console của client. Nhớ xoá thông tin nhạy cảm.
+      render: text
+  - type: textarea
+    id: context
+    attributes:
+      label: Thông tin thêm
+      description: Ảnh chụp, video...

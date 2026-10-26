@@ -1,0 +1,40 @@
+diff --git a/dist/apis/listen.d.ts b/dist/apis/listen.d.ts
+index 79c9eb72edc2bfe855dc046f7795436879fe0b44..0f8a820ca50fd73318ff4cf32f08f85603b35876 100644
+--- a/dist/apis/listen.d.ts
++++ b/dist/apis/listen.d.ts
+@@ -42,6 +42,7 @@ interface ListenerEvents {
+     friend_event: [data: FriendEvent];
+     group_event: [data: GroupEvent];
+     cipher_key: [key: string];
++    voip: [control: { act_type: "voip"; act: string; data: unknown }];
+ }
+ export declare class Listener extends EventEmitter<ListenerEvents> {
+     private ctx;
+diff --git a/dist/apis/listen.js b/dist/apis/listen.js
+index ce5d95e1ea1791f5225e7d4a6f2cd734f0c2d67d..600199734954401f0ea66b313628ea0292284a86 100644
+--- a/dist/apis/listen.js
++++ b/dist/apis/listen.js
+@@ -239,6 +239,9 @@ export class Listener extends EventEmitter {
+                                 continue;
+                             this.emit("group_event", groupEvent);
+                         }
++                        else if (control.content.act_type == "voip") {
++                            this.emit("voip", control.content);
++                        }
+                         else if (control.content.act_type == "fr") {
+                             // 28/02/2025
+                             // Zalo send both req and req_v2 event when user send friend request
+diff --git a/dist/cjs/apis/listen.cjs b/dist/cjs/apis/listen.cjs
+index 1e8be5688e3684404b1452a4a2743db4d8a69fd6..3b39d6b6519e3fcf2bc30df0f4321a4fbe1047f2 100644
+--- a/dist/cjs/apis/listen.cjs
++++ b/dist/cjs/apis/listen.cjs
+@@ -252,6 +252,9 @@ class Listener extends EventEmitter {
+                                 continue;
+                             this.emit("group_event", groupEvent);
+                         }
++                        else if (control.content.act_type == "voip") {
++                            this.emit("voip", control.content);
++                        }
+                         else if (control.content.act_type == "fr") {
+                             // 28/02/2025
+                             // Zalo send both req and req_v2 event when user send friend request

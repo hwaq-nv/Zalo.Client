@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main", "call", "viewer"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "core:window:allow-destroy",
+    "dialog:allow-save",
+    { "identifier": "opener:allow-open-path", "allow": [{ "path": "$APPCACHE/**" }] }
+  ]
+}

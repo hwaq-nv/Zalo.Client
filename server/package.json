@@ -1,0 +1,22 @@
+{
+  "name": "server",
+  "scripts": {
+    "dev": "PORT=3000 APP_TOKEN=dev bun run --watch src/index.ts"
+  },
+  "dependencies": {
+    "@scalar/hono-api-reference": "^0.12.14",
+    "hono": "^4.13.13",
+    "hono-openapi": "^1.5.0",
+    "https-proxy-agent": "^9.1.0",
+    "inversify": "^8.2.3",
+    "zca-js": "^2.2.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "~6.0.3"
+  },
+  "patchedDependencies": {
+    "zca-js@2.2.0": "patches/zca-js@2.2.0.patch"
+  }
+}

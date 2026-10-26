@@ -1,0 +1,25 @@
+name: Câu hỏi
+description: Hỏi về cách cài đặt, cách dùng hoặc code
+title: "[Question]: "
+labels: [question]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Câu hỏi
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: Đã thử gì?
+      description: Lệnh đã chạy, tài liệu đã đọc...
+  - type: dropdown
+    id: area
+    attributes:
+      label: Phần liên quan
+      options:
+        - Client (app desktop)
+        - Server
+        - Cả hai
+        - Không rõ

@@ -12,6 +12,7 @@ export const queryKeys = {
   presence: (accountId: string, userId: string) => ["presence", accountId, userId],
   typing: (accountId: string, threadId: string) => ["typing", accountId, threadId],
   loginQr: ["login-qr"],
+  syncState: (accountId: string) => ["sync", accountId],
   mediaDevices: ["media-devices"],
   groupCallMembers: (accountId: string, groupId: string) => ["calls", "members", accountId, groupId],
 }

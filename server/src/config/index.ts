@@ -12,6 +12,6 @@ export const config = {
     port: Number(process.env.PORT ?? 0),
     token: process.env.APP_TOKEN ?? crypto.randomUUID(),
     dataDir,
-  dbPath: process.env.DB_PATH ?? join(dataDir, 'nexroaxx.zalo-desktop.db'),
+  dbPath: process.env.DB_PATH ?? join(dataDir, 'nexroaxx.zalo-desktop.v2.db'),
   logLevel: process.env.LOG_LEVEL ?? 'info',
 }

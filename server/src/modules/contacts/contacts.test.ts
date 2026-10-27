@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
-import { FriendEventType, type FriendEvent, type User } from 'zca-js'
+import { FriendEventType, type FriendEvent, type User } from '@hwqnq/zca-js'
 import { fakeZalo } from '../../../test/fake-zalo'
 import { openDatabase } from '../../dbs/sqlite'
 import { createContainer } from '../../di/dependency-injection'
@@ -22,10 +22,11 @@ function setup() {
   const repo = c.get<IAccountRepository>(TOKENS.AccountRepository)
   for (const id of [A, B]) repo.upsert(id, `Nick ${id.slice(0, 1)}`, '', { imei: id, userAgent: '', cookie: [] })
   // Như src/index.ts: mọi service phải được tạo để nghe event của ZaloClient
-  c.get<IMessageService>(TOKENS.MessageService)
+  const messages = c.get<IMessageService>(TOKENS.MessageService)
   return {
     db,
     zalo,
+    messages,
     accounts: c.get<IAccountService>(TOKENS.AccountService),
     threads: c.get<IThreadService>(TOKENS.ThreadService),
     contacts: c.get<IContactService>(TOKENS.ContactService),
@@ -68,8 +69,8 @@ test('người lạ nhắn riêng cũng thành contact; người chỉ nói tron
   const msg = (type: 0 | 1, threadId: string, uidFrom: string, msgId: string) =>
     zalo.emit('message', A, { type, threadId, isSelf: false, data: { msgId, cliMsgId: 'c', msgType: 'webchat', uidFrom, idTo: A, dName: 'Khách', ts: '1000', content: 'hi' } } as never)
 
-  msg(0, 'stranger', 'stranger', 'm1')
-  msg(1, 'g1', 'member', 'm2')
+  msg(0, 'stranger', 'stranger', '1')
+  msg(1, 'g1', 'member', '2')
 
   expect(contactOf(db, A, 'stranger')).not.toBeNull()
   expect(contactOf(db, A, 'member')).toBeNull()
@@ -83,22 +84,22 @@ test('người lạ nhắn tới thì tự lấy tên và ảnh Zalo, gom thành
   })
   zalo.attach(A, z.api)
   await contacts.sync(A, z.api)
-  expect(z.calls.getUserInfo).toEqual([])
+  expect(z.calls.miniProfiles).toEqual([])
 
   const msg = (uid: string, msgId: string) =>
     zalo.emit('message', A, { type: 0, threadId: uid, isSelf: false, data: { msgId, cliMsgId: 'c', msgType: 'webchat', uidFrom: uid, idTo: A, dName: 'Tên trong tin', ts: '1000', content: 'hi' } } as never)
-  msg('s1', 'm1')
-  msg('s2', 'm2')
+  msg('s1', '1')
+  msg('s2', '2')
   await Bun.sleep(700)
 
-  expect(z.calls.getUserInfo).toEqual([['s1', 's2']])
+  expect(z.calls.miniProfiles).toEqual([['s1', 's2']])
   expect(threads.list(A).find((t) => t.id === 's1')).toMatchObject({ name: 'Khách Mới', avatar: 'https://a/s1.jpg' })
   expect(threads.list(A).find((t) => t.id === 's2')?.name).toBe('Tên trong tin')
 
-  msg('s2', 'm3')
+  msg('s2', '3')
   await contacts.sync(A, z.api)
   await Bun.sleep(700)
-  expect(z.calls.getUserInfo).toEqual([['s1', 's2']])
+  expect(z.calls.miniProfiles).toEqual([['s1', 's2']])
 })
 
 test('danh sách khách cần chú ý và hồ sơ có ảnh đại diện', async () => {
@@ -115,7 +116,7 @@ test('người lạ đang nhắn với nick còn dùng là chưa kết bạn, kh
   const { db, zalo, accounts, contacts } = setup()
   await contacts.sync(B, fakeZalo(B, { friends: [friend('u6', 'Hà')] }).api)
   accounts.setState(B, { state: 'locked' })
-  zalo.emit('message', A, { type: 0, threadId: 's1', isSelf: false, data: { msgId: 'm1', cliMsgId: 'c', msgType: 'webchat', uidFrom: 's1', idTo: A, dName: 'Khách lạ', ts: '1000', content: 'hi' } } as never)
+  zalo.emit('message', A, { type: 0, threadId: 's1', isSelf: false, data: { msgId: '1', cliMsgId: 'c', msgType: 'webchat', uidFrom: 's1', idTo: A, dName: 'Khách lạ', ts: '1000', content: 'hi' } } as never)
 
   expect(contacts.atRisk(2).map((r) => [r.name, r.live, r.reach])).toEqual([
     ['Hà', 0, 0],
@@ -180,6 +181,26 @@ test('nhóm: chỉ lấy info nhóm mới hoặc đổi version; nhóm đã rờ
     ['g1', 1, 'Nhóm 1', 'a1'],
     ['g3', 1, 'Nhóm 3', 'a3'],
   ])
+})
+
+test('thành viên nhóm được lưu tên và ảnh từ getGroupInfo, không cần gọi miniProfiles', async () => {
+  const { db, contacts } = setup()
+  const z = fakeZalo(A, {
+    groups: { version: 'v1', gridVerMap: { g1: '1' } },
+    groupInfo: {
+      g1: {
+        name: 'Nhóm 1',
+        avt: 'a1',
+        currentMems: [{ id: 'm1', dName: 'Thành viên 1', zaloName: 'tv1', avatar: 'https://a/m1.jpg' }],
+      },
+    },
+  })
+  await contacts.sync(A, z.api)
+
+  const row = db.query('SELECT display_name, zalo_name, avatar, synced_at FROM users WHERE account_id = ? AND id = ?').get(A, 'm1') as any
+  expect(row).toMatchObject({ display_name: 'Thành viên 1', zalo_name: 'tv1', avatar: 'https://a/m1.jpg' })
+  expect(row.synced_at).not.toBeNull()
+  expect(z.calls.miniProfiles).toEqual([])
 })
 
 test('tên gợi nhớ được đồng bộ và hiện thay tên Zalo; lời mời đã gửi thành quan hệ sent', async () => {
@@ -268,7 +289,7 @@ test('tên trong hộp thư ưu tiên tên tự đặt cho contact, rồi mới 
   const { db, zalo, threads, contacts } = setup()
   const z = fakeZalo(A, { friends: [friend('u1', 'Lan')] })
   await contacts.sync(A, z.api)
-  zalo.emit('message', A, { type: 0, threadId: 'u1', isSelf: false, data: { msgId: 'm1', cliMsgId: 'c', msgType: 'webchat', uidFrom: 'u1', idTo: A, dName: 'Lan', ts: '1000', content: 'chào' } } as never)
+  zalo.emit('message', A, { type: 0, threadId: 'u1', isSelf: false, data: { msgId: '1', cliMsgId: 'c', msgType: 'webchat', uidFrom: 'u1', idTo: A, dName: 'Lan', ts: '1000', content: 'chào' } } as never)
   const name = () => threads.list(A).find((t) => t.id === 'u1')?.name
 
   expect(name()).toBe('Lan')
@@ -278,4 +299,42 @@ test('tên trong hộp thư ưu tiên tên tự đặt cho contact, rồi mới 
   expect(name()).toBe('Chị Lan Q7')
   contacts.update(contactOf(db, A, 'u1')!, { name: 'Lan (khách VIP)' })
   expect(name()).toBe('Lan (khách VIP)')
+})
+
+test('msg_id so theo số: 1000 mới hơn 999 dù cùng ts; msgId không phải số thì bỏ qua', () => {
+  const { zalo, threads, messages } = setup()
+  const msg = (msgId: string) =>
+    zalo.emit('message', A, { type: 0, threadId: 'u1', isSelf: false, data: { msgId, cliMsgId: '55', msgType: 'webchat', uidFrom: 'u1', idTo: A, dName: 'Lan', ts: '1000', content: msgId } } as never)
+  msg('1000')
+  msg('999')
+  msg('abc')
+
+  expect(messages.list(A, 'u1', { limit: 50 }).map((m) => [m.msg_id, m.cli_msg_id])).toEqual([
+    ['1000', '55'],
+    ['999', '55'],
+  ])
+  expect(threads.list(A)[0].preview).toBe('1000')
+})
+
+test('nhóm lưu mô tả, người tạo và thành viên kèm vai trò', async () => {
+  const { db, contacts } = setup()
+  const z = fakeZalo(A, {
+    groups: { version: 'v1', gridVerMap: { g1: '1' } },
+    groupInfo: { g1: { name: 'Nhóm 1', desc: 'mô tả', creatorId: 'u1', adminIds: ['u2'], memberIds: ['u1', 'u2', 'u3'], totalMember: 3 } },
+  })
+  await contacts.sync(A, z.api)
+
+  expect(db.query('SELECT description, creator_id, total_member FROM groups WHERE id = ?').get('g1')).toEqual({ description: 'mô tả', creator_id: 'u1', total_member: 3 })
+  expect(db.query('SELECT user_id, role FROM group_members WHERE group_id = ? ORDER BY user_id').all('g1')).toEqual([
+    { user_id: 'u1', role: 'owner' },
+    { user_id: 'u2', role: 'admin' },
+    { user_id: 'u3', role: 'member' },
+  ])
+})
+
+test('tìm theo SĐT của bạn đã đồng bộ thì trả luôn, không cần nick online', async () => {
+  const { threads, contacts } = setup()
+  await contacts.sync(A, fakeZalo(A, { friends: [friend('u1', 'Lan', { phoneNumber: '0912345678' })] }).api)
+
+  expect(await threads.findByPhone({ accountId: A, phone: '0912 345 678' })).toMatchObject({ id: 'u1', name: 'Lan' })
 })

@@ -1,3 +1,4 @@
 # deps
 node_modules/
 data/
+src/third-party/db-cross-v4/build/

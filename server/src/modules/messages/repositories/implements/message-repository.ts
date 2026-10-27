@@ -5,6 +5,9 @@ import type { MessageRow, ReactionCount, Receipt, Sticker } from '../../../../ty
 import type IMessageRepository from '../interfaces/message-repository'
 import type { ReactionRow } from '../interfaces/message-repository'
 
+const COLUMNS = `m.id, m.account_id, CAST(m.msg_id AS TEXT) AS msg_id, CAST(m.cli_msg_id AS TEXT) AS cli_msg_id, CAST(m.quote_msg_id AS TEXT) AS quote_msg_id,
+  m.thread_id, m.thread_type, m.from_id, m.from_name, m.is_self, m.ts, m.msg_type, m.text, m.raw, m.recalled`
+
 @injectable()
 export default class MessageRepository implements IMessageRepository {
   constructor(@inject(TOKENS.Database) private db: Database) {}
@@ -12,8 +15,8 @@ export default class MessageRepository implements IMessageRepository {
   insert(message: Omit<MessageRow, 'id' | 'reactions' | 'from_avatar'>) {
     const result = this.db
       .query(
-        `INSERT INTO messages (account_id, msg_id, thread_id, thread_type, from_id, from_name, is_self, ts, msg_type, text, raw, recalled)
-         VALUES ($account_id, $msg_id, $thread_id, $thread_type, $from_id, $from_name, $is_self, $ts, $msg_type, $text, $raw, $recalled)
+        `INSERT INTO messages (account_id, msg_id, cli_msg_id, quote_msg_id, thread_id, thread_type, from_id, from_name, is_self, ts, msg_type, text, raw, recalled)
+         VALUES ($account_id, $msg_id, $cli_msg_id, $quote_msg_id, $thread_id, $thread_type, $from_id, $from_name, $is_self, $ts, $msg_type, $text, $raw, $recalled)
          ON CONFLICT (account_id, msg_id) DO NOTHING`,
       )
       .run(message)
@@ -30,7 +33,7 @@ export default class MessageRepository implements IMessageRepository {
     const cursorFilter = before === undefined ? '' : 'AND (m.ts, m.msg_id) < (SELECT ts, msg_id FROM messages WHERE account_id = $accountId AND msg_id = $before)'
     return this.db
       .query(
-        `SELECT m.*, u.avatar AS from_avatar FROM messages m
+        `SELECT ${COLUMNS}, u.avatar AS from_avatar FROM messages m
          LEFT JOIN users u ON u.account_id = m.account_id AND u.id = m.from_id
          WHERE m.account_id = $accountId AND m.thread_id = $threadId ${cursorFilter} ORDER BY m.ts DESC, m.msg_id DESC LIMIT $limit`,
       )
@@ -38,7 +41,7 @@ export default class MessageRepository implements IMessageRepository {
   }
 
   get(accountId: string, msgId: string) {
-    return (this.db.query('SELECT * FROM messages WHERE account_id = ? AND msg_id = ?').get(accountId, msgId) as MessageRow | null) ?? undefined
+    return (this.db.query(`SELECT ${COLUMNS} FROM messages m WHERE m.account_id = ? AND m.msg_id = ?`).get(accountId, msgId) as MessageRow | null) ?? undefined
   }
 
   // Trigger messages_fts_recall gỡ tin khỏi index tìm kiếm
@@ -49,7 +52,7 @@ export default class MessageRepository implements IMessageRepository {
   search(match: string, accountId: string | undefined, limit: number) {
     return this.db
       .query(
-        `SELECT m.* FROM messages_fts f JOIN messages m ON m.id = f.rowid
+        `SELECT ${COLUMNS} FROM messages_fts f JOIN messages m ON m.id = f.rowid
          WHERE messages_fts MATCH $match AND ($accountId IS NULL OR m.account_id = $accountId)
          ORDER BY m.ts DESC, m.msg_id DESC LIMIT $limit`,
       )
@@ -68,7 +71,7 @@ export default class MessageRepository implements IMessageRepository {
   reactions(accountId: string, msgIds: string[]) {
     const rows = this.db
       .query(
-        `SELECT r.msg_id, r.icon, count(*) AS count, max(r.user_id = r.account_id) AS mine
+        `SELECT CAST(r.msg_id AS TEXT) AS msg_id, r.icon, count(*) AS count, max(r.user_id = r.account_id) AS mine
          FROM reactions r
          WHERE r.account_id = $accountId AND r.msg_id IN (SELECT value FROM json_each($msgIds)) AND r.icon <> ''
            AND r.ts > (SELECT coalesce(max(g.ts), 0) FROM reactions g

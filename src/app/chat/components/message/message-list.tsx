@@ -83,7 +83,7 @@ export const MessageList = ({ thread, onReply }: { thread: ThreadRow; onReply: (
                 {showName && <span className="px-1 text-xs text-muted-foreground">{m.from_name}</span>}
                 <div
                   title={formatDateTime(m.ts)}
-                  className={cn("group/msg relative text-sm", !plain && "rounded-2xl px-3 py-2", !plain && (mine ? "bg-primary text-primary-foreground" : "bg-muted"))}
+                  className={cn("group/msg relative max-w-full text-sm wrap-break-word", !plain && "rounded-2xl px-3 py-2", !plain && (mine ? "bg-primary text-primary-foreground" : "bg-muted"))}
                 >
                   {m.quote && <MessageQuote quote={m.quote} />}
                   <MessageBody message={m} />

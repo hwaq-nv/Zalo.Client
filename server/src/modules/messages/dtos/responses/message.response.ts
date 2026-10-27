@@ -8,6 +8,8 @@ export const MessageRow = z.object({
   id: z.number(),
   account_id: z.string(),
   msg_id: z.string(),
+  cli_msg_id: z.string().nullable(),
+  quote_msg_id: z.string().nullable(),
   thread_id: z.string(),
   thread_type: z.literal([0, 1]),
   from_id: z.string(),
@@ -36,3 +38,10 @@ export type Receipt = z.infer<typeof Receipt>
 // Ảnh: https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid={id}&size=130 (công khai, không cần đăng nhập)
 export const Sticker = z.object({ id: z.number().int(), cateId: z.number().int(), type: z.number().int() })
 export type Sticker = z.infer<typeof Sticker>
+
+export const SyncState = z.object({
+  status: z.enum(['idle', 'requested', 'confirmed', 'rejected', 'importing', 'completed', 'failed', 'cancelled']),
+  error: z.string().optional(),
+  imported: z.number().optional(),
+})
+export type SyncState = z.infer<typeof SyncState>

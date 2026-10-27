@@ -1,4 +1,4 @@
-import type { ThreadType } from 'zca-js'
+import type { ThreadType } from '@hwqnq/zca-js'
 import type { ThreadRow } from '../../../../types'
 
 export type ThreadActivity = {
@@ -20,6 +20,7 @@ export default interface IThreadRepository {
   typeOf(accountId: string, id: string): ThreadType | undefined
   // Tên (cùng thứ tự ưu tiên như list) và avatar của một người hoặc nhóm
   profile(accountId: string, id: string): { name: string | null; avatar: string | null } | undefined
+  memberIds(accountId: string, groupId: string): string[]
   ensure(accountId: string, id: string, type: ThreadType): void
   // Gọi sau khi chèn được tin mới: dời con trỏ tin cuối theo (ts, msgId), cộng unread hoặc dời mốc đã đọc
   advance(activity: ThreadActivity): void

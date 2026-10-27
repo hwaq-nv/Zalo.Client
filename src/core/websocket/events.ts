@@ -36,6 +36,8 @@ function handleServerEvent(e: ServerEvent) {
       return invalidate(queryKeys.messages(e.accountId))
     case "reaction":
       return invalidate(queryKeys.messages(e.accountId, e.threadId))
+    case "sync_status":
+      return queryClient.setQueryData(queryKeys.syncState(e.accountId), { status: e.status, error: e.error, imported: e.imported })
     case "qr-done":
       invalidate(queryKeys.accounts)
       return queryClient.setQueryData(queryKeys.loginQr, e)

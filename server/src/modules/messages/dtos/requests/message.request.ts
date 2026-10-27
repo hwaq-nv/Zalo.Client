@@ -1,4 +1,4 @@
-import { Reactions } from 'zca-js'
+import { Reactions } from '@hwqnq/zca-js'
 import { z } from 'zod'
 import { Sticker } from '../responses/message.response'
 

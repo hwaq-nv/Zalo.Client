@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify'
-import { ThreadType } from 'zca-js'
+import { ThreadType } from '@hwqnq/zca-js'
 import { BadRequestError, ConflictError, normalizePhone, NotFoundError } from '../../../../core'
 import { TOKENS } from '../../../../di/tokens'
 import { ZaloClient } from '../../../../third-party/zalo/zalo-client'
@@ -35,13 +35,15 @@ export default class ThreadService implements IThreadService {
   async findByPhone({ accountId, phone }: FindByPhoneRequest) {
     const normalized = normalizePhone(phone)
     if (!normalized) throw new BadRequestError('invalid phone', 'INVALID_PHONE')
+    const known = this.contactRepo.userByPhone(accountId, normalized)
+    if (known) return this.get(accountId, known)
     const api = this.zalo.getApi(accountId)
     if (!api) throw new ConflictError('account offline', 'ACCOUNT_OFFLINE')
     const user = await api.findUser(normalized)
     if (!user?.uid) throw new NotFoundError('no Zalo user with this phone', 'USER_NOT_FOUND')
     const displayName = user.display_name || null
     this.contactRepo.ensureUser(accountId, user.uid, displayName)
-    this.contactRepo.saveProfiles(accountId, [user.uid], [{ id: user.uid, displayName, zaloName: user.zalo_name || null, avatar: user.avatar || null }])
+    this.contactRepo.saveProfiles(accountId, [user.uid], [{ id: user.uid, displayName, zaloName: user.zalo_name || null, avatar: user.avatar || null, phone: normalized }])
     return this.get(accountId, user.uid)
   }
 

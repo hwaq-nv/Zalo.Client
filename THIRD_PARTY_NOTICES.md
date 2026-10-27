@@ -7,6 +7,10 @@ https://github.com/VN-Linux-Family/zalo-for-linux
 `server/src/third-party/zcall/` is ported from its `zcall-native/` directory
 (converted to TypeScript and modified).
 
+`server/src/third-party/db-cross-v4/` (`binding.gyp`, `src/main.cc`) is copied
+unmodified from its `nativelibs/db-cross-v4/` directory, a reimplementation
+based on reverse engineering by realdtn2 (https://github.com/realdtn2/zalo-linux-2026).
+
 ```
 MIT License
 
@@ -35,13 +39,14 @@ SOFTWARE.
 
 https://github.com/RFS-ADRENO/zca-js
 
-Used by the server as an npm dependency. `server/patches/zca-js@2.2.0.patch`
-modifies its code.
+Used by the server as an npm dependency through the fork `@hwqnq/zca-js`
+(https://github.com/hwaq-nv/zca-js), which modifies its code.
 
 ```
 MIT License
 
 Copyright (c) 2024 - 2025 RFS-ADRENO, truong9c2208, JustKemForFun
+Copyright (c) 2026 hwqnq (modifications in this fork)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

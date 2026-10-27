@@ -4,7 +4,8 @@ mod models;
 mod services;
 mod utils;
 
-use commands::{call_window, file_viewer, media};
+use commands::{call_window, file_viewer, media, server};
+use tauri::Manager;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -16,7 +17,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![greet, media::media_connect, media::media_prefs, media::media_devices, call_window::open_call_window,
+        .setup(|app| {
+            app.manage(services::server::start(app.handle()).map_err(|e| e.to_string())?);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![greet, server::server_info, media::media_connect, media::media_prefs, media::media_devices, call_window::open_call_window,
             file_viewer::open_viewer, file_viewer::viewer_file, file_viewer::download_file, file_viewer::zip_entries, file_viewer::zip_extract, file_viewer::save_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -30,6 +30,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
+import audioIo from '../audio-io.py' with { type: 'text' };
+import opusPlay from '../../tools/opus_play.py' with { type: 'text' };
 import {
   MSG_TYPES,
   COMMANDS,
@@ -109,6 +111,17 @@ const MEDIA_TIMEOUT_MS = 20000;  // no audio from the peer for this long: give u
 const P2P_BIND_FAST_MS = 100;
 const P2P_BIND_SLOW_MS = 400;
 const P2P_BIND_GIVE_UP_MS = 15000;
+
+let audioIoPath: string | undefined;
+function audioIoScript(): string {
+  if (!audioIoPath) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zcall-'));
+    process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
+    fs.writeFileSync(path.join(dir, 'opus_play.py'), opusPlay);
+    fs.writeFileSync(audioIoPath = path.join(dir, 'audio-io.py'), audioIo);
+  }
+  return audioIoPath;
+}
 
 export function parseHostPort(addr: unknown): HostPort | null {
   if (!addr || typeof addr !== 'string') return null;
@@ -724,7 +737,7 @@ export class ZrtcMediaBackend extends EventEmitter {
   }
 
   _spawnAudio(args: string[]): AudioPort {
-    const audio = spawn('python3', [path.join(import.meta.dir, '..', 'audio-io.py'), ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const audio = spawn('python3', [audioIoScript(), ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
     const port: AudioPort = {
       write: (b) => { audio.stdin.write(b); },
       close: () => {

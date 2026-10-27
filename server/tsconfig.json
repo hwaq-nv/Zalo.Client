@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "strict": true,
+    "module": "preserve",
     "types": ["bun"],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",

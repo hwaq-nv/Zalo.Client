@@ -7,7 +7,17 @@
     "cflags!": ["-fno-exceptions"],
     "cflags_cc!": ["-fno-exceptions"],
     "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"],
-    "libraries": ["-llzma", "-lcrypto"],
-    "cflags_cc": ["-std=c++17", "-O2"]
+    "cflags_cc": ["-std=c++17", "-O2"],
+    "conditions": [
+      ["OS=='win'", {
+        "variables": { "vcpkg": "<!(node -p \"process.env.VCPKG_INSTALLATION_ROOT + '/installed/x64-windows-static'\")" },
+        "include_dirs": ["<(vcpkg)/include"],
+        "defines": ["LZMA_API_STATIC"],
+        "libraries": ["<(vcpkg)/lib/libcrypto.lib", "<(vcpkg)/lib/lzma.lib", "crypt32.lib", "ws2_32.lib", "advapi32.lib", "user32.lib"],
+        "msvs_settings": { "VCCLCompilerTool": { "ExceptionHandling": 1 } }
+      }, {
+        "libraries": ["-llzma", "-lcrypto"]
+      }]
+    ]
   }]
 }

@@ -11,23 +11,17 @@ Cảm ơn bạn đã muốn đóng góp. Đây là client Zalo không chính th�
 - [Rust](https://rustup.rs) và Tauri CLI: `cargo install tauri-cli`
 - Linux: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxdo-dev libssl-dev libasound2-dev libclang-dev`
 - CMake và trình biên dịch C/C++ (Windows: MSVC) để build libopus, OpenH264. NASM nên có: OpenH264 nhanh hơn khoảng 3 lần
-- Cuộc gọi, `ZCALL_MEDIA=app` (mặc định trên Windows): mic, loa, camera do app lo, không cần cài thêm. Windows phải bật "Cho phép ứng dụng desktop dùng micro/camera"
-- Cuộc gọi, `ZCALL_MEDIA=python` (mặc định trên Linux, chỉ Linux): `python3`, PipeWire hoặc PulseAudio (`pactl`, `parec`, `pacat`), `libopus`, `ffmpeg`
+- Cuộc gọi, `ZCALL_MEDIA=app` (mặc định): mic, loa, camera do app lo, không cần cài thêm. Windows phải bật "Cho phép ứng dụng desktop dùng micro/camera"
+- Cuộc gọi, `ZCALL_MEDIA=python` (chỉ Linux): `python3`, PipeWire hoặc PulseAudio (`pactl`, `parec`, `pacat`), `libopus`, `ffmpeg`
 
 ## Chạy dev
 
 ```sh
-# server — cổng 3000, token "dev"
-cd server
-bun install
-bun run dev
-
-# client — terminal khác, ở gốc repo
-bun install
+bun install && (cd server && bun install)
 cargo tauri dev
 ```
 
-Client đọc `VITE_API_URL` và `VITE_API_TOKEN` từ `.env.development`, đã khớp với server dev.
+App tự bật server lúc mở và tắt theo: dev chạy `bun --watch` trong `server/` (cổng 3000, token "dev"), bản build chạy sidecar `zalo-server` (cổng, token ngẫu nhiên, dữ liệu ở thư mục app data). Client lấy cổng, token qua lệnh `server_info`.
 
 ## Trước khi mở PR
 

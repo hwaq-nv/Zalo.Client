@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:server": "cd server && bun build --compile src/index.ts --outfile ../src-tauri/binaries/zalo-server-$TAURI_ENV_TARGET_TRIPLE",
     "preview": "vite preview",
     "tauri": "tauri"
   },

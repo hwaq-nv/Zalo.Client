@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.nexoraxx.zalo.client",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun run build:server && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run build:server && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -32,12 +32,18 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/zalo-server"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
   }
 }

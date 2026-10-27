@@ -8,7 +8,7 @@ export type MediaEvent =
 type Sock = { send(data: string | Uint8Array): unknown; close(): unknown }
 type Events = { audio: [frame: Buffer]; camera: [key: boolean, data: Buffer]; event: [e: MediaEvent]; up: []; down: [] }
 
-export const mediaMode = () => process.env.ZCALL_MEDIA ?? (process.platform === 'win32' ? 'app' : 'python')
+export const mediaMode = () => process.env.ZCALL_MEDIA ?? 'app'
 
 export class MediaLink extends EventEmitter<Events> {
   private sock: Sock | null = null

@@ -3,7 +3,7 @@
 Cảm ơn bạn đã muốn đóng góp. Đây là client Zalo không chính thức, gồm:
 
 - `src/`, `src-tauri/` — client (React + Tauri), ở gốc repo
-- `server/` — server (Bun + Hono, dùng [zca-js](https://github.com/RFS-ADRENO/zca-js))
+- `server/` — server (Bun + Hono, dùng [@hwqnq/zca-js](https://github.com/hwaq-nv/zca-js), fork của [zca-js](https://github.com/RFS-ADRENO/zca-js))
 
 ## Cần cài
 

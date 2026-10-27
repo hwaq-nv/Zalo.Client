@@ -1,4 +1,4 @@
-import type { MessageRow, Receipt, Sticker } from '../../../../types'
+import type { MessageRow, Receipt, Sticker, SyncState } from '../../../../types'
 import type {
   ListMessagesRequest,
   ReactRequest,
@@ -28,4 +28,8 @@ export default interface IMessageService {
   recall(accountId: string, threadId: string, msgId: string): Promise<void>
   // Mốc đã nhận / đã xem của từng người trong hội thoại; đổi thì WS 'receipt'
   receipts(accountId: string, threadId: string): Receipt[]
+  // Điện thoại xác nhận rồi gửi bản sao lưu về; các bước tiếp theo đi qua WS 'sync_status'
+  requestSync(accountId: string): Promise<SyncState>
+  cancelSync(accountId: string): Promise<void>
+  syncState(accountId: string): SyncState
 }

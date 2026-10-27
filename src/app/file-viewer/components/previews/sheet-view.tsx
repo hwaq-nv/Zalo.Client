@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/shared/components/ui/toggle-group"
 import { MAX_SHEET_ROWS } from "@/app/file-viewer/constants/file-viewer.constants"
 import type { ViewProps } from "@/app/file-viewer/models/file-viewer.model"
+import { getFileType } from "@/app/file-viewer/utils/file-viewer.utils"
 
 export const SheetView = ({ src, file, onError }: ViewProps) => {
   const [book, setBook] = useState<WorkBook>()
@@ -14,8 +15,8 @@ export const SheetView = ({ src, file, onError }: ViewProps) => {
     fetch(src)
       .then((r) => r.arrayBuffer())
       .then((b) => {
-        // csv không có BOM: SheetJS đoán sai bảng mã, nên tự giải mã UTF-8
-        const wb = file.ext === "csv" ? read(new TextDecoder().decode(b), { type: "string", sheetRows: MAX_SHEET_ROWS }) : read(b, { sheetRows: MAX_SHEET_ROWS })
+        // csv/tsv không có BOM: SheetJS đoán sai bảng mã, nên tự giải mã UTF-8
+        const wb = getFileType(file.ext) === "csv" ? read(new TextDecoder().decode(b), { type: "string", sheetRows: MAX_SHEET_ROWS }) : read(b, { sheetRows: MAX_SHEET_ROWS })
         if (!live) return
         setBook(wb)
         setSheet(wb.SheetNames[0])

@@ -1,3 +1,5 @@
+import type { FILE_TYPES } from "@/app/file-viewer/constants/file-viewer.constants"
+
 export type FileType =
   | "pdf"
   | "image"
@@ -14,33 +16,7 @@ export type FileType =
   | "archive"
   | "unknown"
 
-export type FileExtension =
-  | "pdf"
-  | "png"
-  | "jpg"
-  | "jpeg"
-  | "webp"
-  | "gif"
-  | "svg"
-  | "mp4"
-  | "webm"
-  | "mp3"
-  | "wav"
-  | "doc"
-  | "docx"
-  | "xls"
-  | "xlsx"
-  | "csv"
-  | "ppt"
-  | "pptx"
-  | "txt"
-  | "json"
-  | "xml"
-  | "md"
-  | "rtf"
-  | "zip"
-  | "rar"
-  | "7z"
+export type FileExtension = keyof typeof FILE_TYPES
 
 export type ViewerFile = { name: string; ext: string; size?: number; url?: string; path?: string }
 

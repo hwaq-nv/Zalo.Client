@@ -1,11 +1,18 @@
 import type { Database } from 'bun:sqlite'
+import crypto from 'node:crypto'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { inject, injectable } from 'inversify'
-import { ThreadType, type DeliveredMessage, type Message, type Reaction, type SeenMessage, type SendMessageQuote, type TMessage, type TReaction, type Typing } from 'zca-js'
+import { ThreadType, type DeliveredMessage, type Message, type Reaction, type SeenMessage, type SendMessageQuote, type TMessage, type TReaction, type Typing } from '@hwqnq/zca-js'
 import { BadRequestError, broadcast, ConflictError, buildFtsQuery, logger, NotFoundError, buildSearchText } from '../../../../core'
 import { TOKENS } from '../../../../di/tokens'
+import { readBackup, requireDbCross, type BackupMessage } from '../../../../third-party/db-cross-v4'
+import type { SyncControl } from '../../../../third-party/zalo/types'
 import { ZaloClient } from '../../../../third-party/zalo/zalo-client'
-import type { MessageRow } from '../../../../types'
+import type { MessageRow, SyncState } from '../../../../types'
 import type IContactRepository from '../../../contacts/repositories/interfaces/contact-repository'
+import type IContactService from '../../../contacts/services/interfaces/contact-service'
 import type IThreadRepository from '../../../threads/repositories/interfaces/thread-repository'
 import type {
   ListMessagesRequest,
@@ -26,15 +33,29 @@ const BACKFILL_MAX_PAGES = 10
 // mark: mọi tin có msgId ≤ mark đã nằm trong DB (null = lần đầu của nick); top: msgId lớn nhất của đợt kéo này
 type BackfillState = { mark: bigint | null; top: bigint | null; pages: number }
 
+type StoredMessage = Pick<Message, 'threadId' | 'type' | 'isSelf'> & {
+  data: Pick<TMessage, 'msgId' | 'cliMsgId' | 'uidFrom' | 'dName' | 'ts' | 'msgType' | 'content'> & { quote?: { globalMsgId?: unknown } }
+}
+
+const SYNC_PC_NAME = 'Zalo PC'
+const NOISE_ID_BATCH_SIZE = 500
+type SyncSession = { publicKey: string; privateKey: string; state: SyncState }
+const SYNC_STATE_KEY = 'backup'
+const SYNC_FINAL_STATUSES: SyncState['status'][] = ['completed', 'failed', 'cancelled', 'rejected']
+const BACKUP_RECALL_TYPES = new Set(['chat.undo', 'chat.delete'])
+
 // old_messages không tách tin thu hồi ra như event 'message' của zca-js
 const isUndoContent = (content: unknown): content is { globalMsgId: string | number } =>
   typeof content === 'object' && content !== null && 'deleteMsg' in content
 
 const getNumericMsgId = (m: Message) => (/^\d+$/.test(m.data.msgId) ? BigInt(m.data.msgId) : null)
 
+const toIntegerId = (value: unknown) => (/^-?\d+$/.test(String(value)) ? String(value) : null)
+
 @injectable()
 export default class MessageService implements IMessageService {
   private backfills = new Map<string, BackfillState>()
+  private syncs = new Map<string, SyncSession>()
 
   constructor(
     private zalo: ZaloClient,
@@ -42,6 +63,7 @@ export default class MessageService implements IMessageService {
     @inject(TOKENS.MessageRepository) private messages: IMessageRepository,
     @inject(TOKENS.ThreadRepository) private threads: IThreadRepository,
     @inject(TOKENS.ContactRepository) private contacts: IContactRepository,
+    @inject(TOKENS.ContactService) private contactService: IContactService,
   ) {
     zalo.on('message', (id, m) => this.receiveMessages(id, [m]))
     zalo.on('undo', (id, u) => this.markRecalled(id, String(u.data.content.globalMsgId)))
@@ -54,6 +76,7 @@ export default class MessageService implements IMessageService {
     zalo.on('seen_messages', (id, seens) => this.receiveReceipts(id, seens))
     zalo.on('delivered_messages', (id, delivereds) => this.receiveReceipts(id, delivereds))
     zalo.on('typing', (id, t) => this.onTyping(id, t))
+    zalo.on('sync_event', (id, e) => this.onSyncEvent(id, e))
   }
 
   list(accountId: string, threadId: string, { before, limit }: ListMessagesRequest) {
@@ -108,8 +131,7 @@ export default class MessageService implements IMessageService {
   async react(accountId: string, threadId: string, msgId: string, { icon }: ReactRequest) {
     const message = this.messages.get(accountId, msgId)
     if (!message || message.thread_id !== threadId) throw new NotFoundError('message not found')
-    const { cliMsgId } = JSON.parse(message.raw) as TMessage
-    await this.getOnlineApi(accountId).addReaction(icon, { data: { msgId, cliMsgId }, threadId, type: message.thread_type })
+    await this.getOnlineApi(accountId).addReaction(icon, { data: { msgId, cliMsgId: message.cli_msg_id ?? '' }, threadId, type: message.thread_type })
   }
 
   // old_reactions để content dạng chuỗi JSON
@@ -166,8 +188,7 @@ export default class MessageService implements IMessageService {
     const message = this.messages.get(accountId, msgId)
     if (!message || message.thread_id !== threadId) throw new NotFoundError('message not found')
     if (!message.is_self) throw new BadRequestError('can only recall own messages', 'NOT_OWN_MESSAGE')
-    const { cliMsgId } = JSON.parse(message.raw) as TMessage
-    await this.getOnlineApi(accountId).undo({ msgId, cliMsgId }, threadId, message.thread_type)
+    await this.getOnlineApi(accountId).undo({ msgId, cliMsgId: message.cli_msg_id ?? '' }, threadId, message.thread_type)
   }
 
   private getOnlineApi(accountId: string) {
@@ -183,11 +204,15 @@ export default class MessageService implements IMessageService {
     return newMessages.length
   }
 
-  private storeMessage(accountId: string, message: Message, read: boolean): MessageRow | undefined {
+  private storeMessage(accountId: string, message: StoredMessage, read: boolean): MessageRow | undefined {
     const data = message.data
+    const msgId = toIntegerId(data.msgId)
+    if (msgId === null) return
     const row: Omit<MessageRow, 'id' | 'reactions' | 'from_avatar'> = {
       account_id: accountId,
-      msg_id: data.msgId,
+      msg_id: msgId,
+      cli_msg_id: toIntegerId(data.cliMsgId),
+      quote_msg_id: toIntegerId(data.quote?.globalMsgId),
       thread_id: message.threadId,
       thread_type: message.type,
       from_id: data.uidFrom,
@@ -252,5 +277,100 @@ export default class MessageService implements IMessageService {
     const next = backfill.top !== null && (mark === null || backfill.top > mark) ? backfill.top : mark
     if (next !== null) this.messages.setCursor(accountId, BACKFILL_CURSOR_KEYS[type], String(next))
     this.backfills.delete(key)
+  }
+
+  async requestSync(accountId: string) {
+    requireDbCross()
+    this.getOnlineApi(accountId)
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'der' },
+      privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+    })
+    const session: SyncSession = { publicKey: publicKey.toString('base64'), privateKey, state: { status: 'requested' } }
+    await this.zalo.syncMessages(accountId, 'pull_mobile_msg', { pc_name: SYNC_PC_NAME, public_key: session.publicKey, from_seq_id: 0, is_retry: 0, min_seq_id: 0, temp_key: '' })
+    this.syncs.set(accountId, session)
+    this.setSyncState(accountId, session, session.state)
+    return session.state
+  }
+
+  async cancelSync(accountId: string) {
+    const session = this.syncs.get(accountId)
+    if (!session) return
+    await this.zalo
+      .syncMessages(accountId, 'cancel_pull_mobile_msg', { pc_name: SYNC_PC_NAME, public_key: session.publicKey })
+      .catch((err) => logger.error('cancel sync', { accountId, err }))
+    this.setSyncState(accountId, session, { status: 'cancelled' })
+  }
+
+  syncState(accountId: string): SyncState {
+    const stored = this.messages.cursor(accountId, SYNC_STATE_KEY)
+    return this.syncs.get(accountId)?.state ?? (stored ? (JSON.parse(stored) as SyncState) : { status: 'idle' })
+  }
+
+  private setSyncState(accountId: string, session: SyncSession, state: SyncState) {
+    session.state = state
+    if (this.syncs.get(accountId) !== session) return
+    if (SYNC_FINAL_STATUSES.includes(state.status)) this.messages.setCursor(accountId, SYNC_STATE_KEY, JSON.stringify(state))
+    broadcast({ type: 'sync_status', accountId, ...state })
+  }
+
+  private onSyncEvent(accountId: string, { act, data }: SyncControl) {
+    const session = this.syncs.get(accountId)
+    if (!session) return
+    const info = (typeof data === 'string' ? JSON.parse(data) : (data ?? {})) as Record<string, unknown>
+    if (act === 'user_confirm') {
+      const action = Number(info.user_action)
+      if (action === 1 || action === 3) this.setSyncState(accountId, session, { status: 'confirmed' })
+      else if (action === 0) this.setSyncState(accountId, session, { status: 'rejected' })
+    } else if (act === 'syncmsg_info') {
+      this.importBackup(accountId, session, String(info.url), String(info.encrypted_key)).catch((err) => {
+        logger.error('import sync backup', { accountId, err })
+        this.setSyncState(accountId, session, { status: 'failed', error: err instanceof Error ? err.message : String(err) })
+      })
+    } else if (act === 'transfer_error' && Number(info.error_code)) {
+      this.setSyncState(accountId, session, { status: 'failed', error: `transfer_error ${info.error_code}` })
+    }
+  }
+
+  private async importBackup(accountId: string, session: SyncSession, url: string, encryptedKey: string) {
+    this.setSyncState(accountId, session, { status: 'importing' })
+    const file = join(tmpdir(), `zalo-backup-${crypto.randomUUID()}`)
+    let backup: BackupMessage[]
+    try {
+      await Bun.write(file, await this.zalo.download(accountId, url))
+      backup = readBackup(file, session.privateKey, encryptedKey)
+    } finally {
+      rmSync(file, { force: true })
+    }
+    const fids = await this.toNoiseIds(accountId, 'fids', backup.flatMap((m) => (m.isGroup ? [m.data.uidFrom] : [m.threadId, m.data.uidFrom])))
+    const gids = await this.toNoiseIds(accountId, 'gids', backup.flatMap((m) => (m.isGroup ? [m.threadId] : [])))
+    // ponytail: một transaction chặn server ~6s với 50k tin; chia lô và nhường event loop nếu thấy giật (nhất là khi đang gọi)
+    const imported = this.db.transaction(() =>
+      backup.filter(({ threadId, isGroup, data }) => {
+        const uidFrom = fids.get(data.uidFrom) ?? data.uidFrom
+        const type = isGroup ? ThreadType.Group : ThreadType.User
+        const stored = this.storeMessage(accountId, { threadId: (isGroup ? gids : fids).get(threadId) ?? threadId, type, isSelf: uidFrom === accountId, data: { ...data, uidFrom } }, true)
+        if (BACKUP_RECALL_TYPES.has(data.msgType)) this.markRecalled(accountId, data.msgId)
+        return stored
+      }).length,
+    )()
+    this.setSyncState(accountId, session, { status: 'completed', imported })
+    broadcast({ type: 'threads', accountId })
+    this.contactService.scheduleProfileRefresh(accountId)
+  }
+
+  // Bản sao lưu từ điện thoại dùng uid/groupId thật, còn Zalo Web dùng id riêng theo từng nick
+  private async toNoiseIds(accountId: string, kind: 'fids' | 'gids', plainIds: string[]) {
+    const ids = new Map<string, string>()
+    const plain = [...new Set(plainIds)].filter((id) => Number.isSafeInteger(Number(id)))
+    for (let i = 0; i < plain.length; i += NOISE_ID_BATCH_SIZE) {
+      const batch = plain.slice(i, i + NOISE_ID_BATCH_SIZE)
+      const noise = (await this.zalo.noiseIds(accountId, { [kind]: batch.map(Number) }))[kind] ?? []
+      batch.forEach((id, j) => {
+        if (noise[j]) ids.set(id, noise[j].replace(/^g/, ''))
+      })
+    }
+    return ids
   }
 }

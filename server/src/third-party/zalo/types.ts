@@ -1,4 +1,4 @@
-import { API, DeliveredMessage, FriendEvent, GroupEvent, Message, Reaction, SeenMessage, ThreadType, Typing, Undo } from "zca-js"
+import { API, DeliveredMessage, FriendEvent, GroupEvent, Message, Reaction, SeenMessage, ThreadType, Typing, Undo } from "@hwqnq/zca-js"
 import { AccountStatus } from "../../types"
 
 export type ZaloEvents = {
@@ -15,8 +15,21 @@ export type ZaloEvents = {
   group_event: [accountId: string, event: GroupEvent]
   attached: [accountId: string, api: API]
   voip: [accountId: string, control: VoipControl]
+  sync_event: [accountId: string, control: SyncControl]
 }
 
 export type VoipControl = { act_type: 'voip'; act: string; data: unknown }
 export type VoicecallProps = { path: string; params: Record<string, unknown> }
 export type VoicecallApi = API & { voicecall(props: VoicecallProps): Promise<unknown> }
+
+export type SyncControl = { act_type?: string; act?: string; data: unknown }
+export type SyncMessagesProps = { path: string; params: Record<string, unknown> }
+export type NoiseIdsRequest = { fids?: number[]; gids?: number[] }
+export type NoiseIdsResponse = { fids?: string[]; gids?: string[] }
+export type MiniProfile = { userId?: string; displayName?: string; zaloName?: string; avatar?: string }
+export type MiniProfilesProps = { friend_ids: string[] }
+export type SyncApi = API & {
+  syncMessages(props: SyncMessagesProps): Promise<unknown>
+  znoise(props: NoiseIdsRequest): Promise<NoiseIdsResponse>
+  getminiprofiles(props: MiniProfilesProps): Promise<Record<string, MiniProfile>>
+}

@@ -1,6 +1,6 @@
 import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { ZaloApiError } from 'zca-js'
+import { ZaloApiError } from '@hwqnq/zca-js'
 import { ZodError } from 'zod'
 import { errorResponse } from '../../http/api.response'
 import { logger } from '../../logger/logger'

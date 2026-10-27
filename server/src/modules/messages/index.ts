@@ -10,7 +10,7 @@ import {
   SendMessageRequest,
   SendStickerRequest,
 } from './dtos/requests/message.request'
-import { MessageRow, Receipt, Sticker } from './dtos/responses/message.response'
+import { MessageRow, Receipt, Sticker, SyncState } from './dtos/responses/message.response'
 import type IMessageService from './services/interfaces/message-service'
 
 export const messageRoutes = (messages: IMessageService) =>
@@ -20,6 +20,12 @@ export const messageRoutes = (messages: IMessageService) =>
     .get('/stickers/search', apiDocs('messages', z.array(Sticker)), validate('query', SearchStickersRequest), async (c) =>
       successResponse(c, await messages.searchStickers(c.req.valid('query'))),
     )
+    .get('/:accountId/sync', apiDocs('messages', SyncState), (c) => successResponse(c, messages.syncState(c.req.param('accountId'))))
+    .post('/:accountId/sync', apiDocs('messages', SyncState), async (c) => successResponse(c, await messages.requestSync(c.req.param('accountId'))))
+    .delete('/:accountId/sync', apiDocs('messages'), async (c) => {
+      await messages.cancelSync(c.req.param('accountId'))
+      return successResponse(c, null)
+    })
     .get('/:accountId/:threadId/messages', apiDocs('messages', z.array(MessageRow)), validate('query', ListMessagesRequest), (c) => {
       const { accountId, threadId } = c.req.param()
       return successResponse(c, messages.list(accountId, threadId, c.req.valid('query')))

@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { inject, injectable } from 'inversify'
-import type { Credentials } from 'zca-js'
+import type { Credentials } from '@hwqnq/zca-js'
 import { TOKENS } from '../../../../di/tokens'
 import type { Account, AccountState } from '../../../../types'
 import type IAccountRepository from '../interfaces/account-repository'

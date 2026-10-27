@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify'
-import { LoginQRCallbackEventType, ZaloApiError, ZaloApiLoginQRAborted, type API } from 'zca-js'
+import { LoginQRCallbackEventType, ZaloApiError, ZaloApiLoginQRAborted, type API } from '@hwqnq/zca-js'
 import { broadcast, logger, NotFoundError } from '../../../../core'
 import { TOKENS } from '../../../../di/tokens'
 import { ZaloClient } from '../../../../third-party/zalo/zalo-client'

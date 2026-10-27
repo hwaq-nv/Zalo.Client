@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { inject, injectable } from 'inversify'
-import type { ThreadType } from 'zca-js'
+import type { ThreadType } from '@hwqnq/zca-js'
 import { TOKENS } from '../../../../di/tokens'
 import type { ThreadRow } from '../../../../types'
 import type IThreadRepository from '../interfaces/thread-repository'
@@ -97,6 +97,10 @@ export default class ThreadRepository implements IThreadRepository {
       )
       .get({ accountId, id }) as { name: string | null; avatar: string | null } | null
     return row ?? undefined
+  }
+
+  memberIds(accountId: string, groupId: string) {
+    return (this.db.query('SELECT user_id FROM group_members WHERE account_id = ? AND group_id = ?').all(accountId, groupId) as { user_id: string }[]).map((m) => m.user_id)
   }
 
   ensure(accountId: string, id: string, type: ThreadType) {

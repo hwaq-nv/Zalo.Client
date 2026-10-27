@@ -2,9 +2,20 @@ import type { AtRiskContact, Contact, ContactLink, Relation } from '../../../../
 
 export type Friend = { id: string; displayName: string | null; zaloName: string | null; avatar: string | null; phone: string | null }
 
-export type GroupInfoRow = { id: string; name: string | null; avatar: string | null; version: string }
+export type GroupMember = { id: string; role: 'member' | 'admin' | 'owner' }
 
-export type Profile = { id: string; displayName: string | null; zaloName: string | null; avatar: string | null }
+export type GroupInfoRow = {
+  id: string
+  name: string | null
+  avatar: string | null
+  description: string | null
+  creatorId: string | null
+  totalMember: number | null
+  version: string
+  members: GroupMember[]
+}
+
+export type Profile = { id: string; displayName: string | null; zaloName: string | null; avatar: string | null; phone?: string | null }
 
 export type ContactPatch = Partial<Pick<Contact, 'name' | 'phone' | 'note'>>
 
@@ -27,6 +38,7 @@ export default interface IContactRepository {
   missingProfiles(accountId: string, limit: number): string[]
   // Đánh dấu cả lô đã hỏi, kể cả người Zalo không trả hồ sơ, để không hỏi lại mãi
   saveProfiles(accountId: string, askedIds: string[], profiles: Profile[]): void
+  userByPhone(accountId: string, phone: string): string | undefined
 
   // Contacts: một người thật trên mọi nick
   // Gắn mọi dòng users là bạn, đang chờ kết bạn hoặc có chat riêng; uid = undefined thì cả nick

@@ -1,6 +1,6 @@
 import { format } from 'node:util'
 import { inject, injectable } from 'inversify'
-import { ThreadType } from 'zca-js'
+import { ThreadType, type API } from '@hwqnq/zca-js'
 import { BadRequestError, ConflictError, logger, NotFoundError, publish } from '../../../../core'
 import { TOKENS } from '../../../../di/tokens'
 import { ZaloClient } from '../../../../third-party/zalo/zalo-client'
@@ -124,10 +124,8 @@ export default class CallService implements ICallService {
   async groupMembers(accountId: string, groupId: string) {
     const api = this.zalo.getApi(accountId)
     if (!api) throw new ConflictError('account offline', 'ACCOUNT_OFFLINE')
-    const info = (await api.getGroupInfo(groupId)).gridInfoMap[groupId]
-    if (!info) throw new NotFoundError('group not found')
     const self = api.getOwnId()
-    const ids = (info.memberIds?.length ? info.memberIds : info.currentMems.map((m) => m.id)).filter((id) => id !== self)
+    const ids = (await this.memberIds(api, accountId, groupId)).filter((id) => id !== self)
     // Hỏi hồ sơ cả nhóm trong một lần; nhóm hàng nghìn người thì cần chia trang
     const { profiles } = ids.length ? await api.getGroupMembersInfo(ids) : { profiles: {} as SignalData }
     const members = ids.map((id) => {
@@ -135,6 +133,14 @@ export default class CallService implements ICallService {
       return { id, name: this.threads.profile(accountId, id)?.name || memberProfile?.displayName || memberProfile?.zaloName || id, avatar: memberProfile?.avatar ?? '' }
     })
     return { maxUsers: getMaxGroupCallUsers(api.getContext().settings), members }
+  }
+
+  private async memberIds(api: API, accountId: string, groupId: string) {
+    const stored = this.threads.memberIds(accountId, groupId)
+    if (stored.length) return stored
+    const info = (await api.getGroupInfo(groupId)).gridInfoMap[groupId]
+    if (!info) throw new NotFoundError('group not found')
+    return info.memberIds?.length ? info.memberIds : info.currentMems.map((m) => m.id)
   }
 
   action(a: CallAction) {

@@ -1,10 +1,12 @@
 import { inject, injectable } from 'inversify'
-import { FriendEventType, type API, type FriendEvent, type GroupEvent } from 'zca-js'
+import { FriendEventType, type API, type FriendEvent, type GroupEvent, type GroupInfo } from '@hwqnq/zca-js'
 import { BadRequestError, broadcast, ConflictError, logger, normalizePhone, NotFoundError } from '../../../../core'
 import { TOKENS } from '../../../../di/tokens'
 import { ZaloClient } from '../../../../third-party/zalo/zalo-client'
 import type { Relation } from '../../../../types'
+import type { MiniProfile } from '../../../../third-party/zalo/types'
 import type IContactRepository from '../../repositories/interfaces/contact-repository'
+import type { GroupMember, Profile } from '../../repositories/interfaces/contact-repository'
 import type { UpdateContactRequest } from '../../dtos/requests/contact.request'
 import type IContactService from '../interfaces/contact-service'
 
@@ -15,13 +17,17 @@ const ALIAS_MAX_PAGES = 100
 const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
 const GROUP_RESYNC_DELAY_MS = 2000
 const PROFILE_BATCH_SIZE = 100
-// Gom tin riêng đến dồn dập (nhất là lúc kéo bù tin) thành một lần gọi getUserInfo
 const PROFILE_FETCH_DELAY_MS = 500
+const PROFILE_BATCH_GAP_MS = 1000
+const PROFILE_RETRY_DELAY_MS = 60_000
+const PROFILE_RETRY_MAX_MS = 30 * 60_000
+const PROFILE_RATE_LIMIT_DELAY_MS = 60 * 60_000
 
 @injectable()
 export default class ContactService implements IContactService {
   private groupSyncTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private profileTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private profileCooldownUntil = new Map<string, number>()
 
   constructor(
     private zalo: ZaloClient,
@@ -65,8 +71,8 @@ export default class ContactService implements IContactService {
     this.contacts.markSent(accountId, Object.keys(await api.getSentFriendRequest()))
     await this.syncGroups(accountId, api)
     this.contacts.link(accountId)
-    await this.refreshProfiles(accountId, api)
     broadcast({ type: 'threads', accountId })
+    this.scheduleProfileRefresh(accountId)
   }
 
   atRisk(minLinks: number) {
@@ -115,40 +121,76 @@ export default class ContactService implements IContactService {
         accountId,
         ids.map((id) => {
           const group = gridInfoMap[id]
-          return { id, name: group?.name ?? null, avatar: group?.avt || group?.fullAvt || null, version: gridVerMap[id] }
+          return {
+            id,
+            name: group?.name ?? null,
+            avatar: group?.avt || group?.fullAvt || null,
+            description: group?.desc || null,
+            creatorId: group?.creatorId || null,
+            totalMember: group?.totalMember ?? null,
+            version: gridVerMap[id],
+            members: group ? groupMembers(group) : [],
+          }
         }),
       )
+      const members: Profile[] = Object.values(gridInfoMap).flatMap((g) =>
+        (g?.currentMems ?? []).map((m) => ({
+          id: m.id,
+          displayName: m.dName || null,
+          zaloName: m.zaloName || null,
+          avatar: m.avatar || m.avatar_25 || null,
+        })),
+      )
+      if (members.length) this.contacts.saveProfiles(accountId, members.map((m) => m.id), members)
     }
     this.contacts.leaveGroups(accountId, Object.keys(gridVerMap))
   }
 
-  // Người lạ chỉ có tên lấy từ tin nhắn: hỏi Zalo tên và ảnh theo lô. saveProfiles đánh dấu cả lô đã hỏi nên vòng lặp luôn dừng
-  private async refreshProfiles(accountId: string, api: API) {
-    let changed = false
+  private async refreshProfiles(accountId: string) {
     for (let ids = this.contacts.missingProfiles(accountId, PROFILE_BATCH_SIZE); ids.length; ids = this.contacts.missingProfiles(accountId, PROFILE_BATCH_SIZE)) {
-      const { changed_profiles } = await api.getUserInfo(ids)
-      this.contacts.saveProfiles(
-        accountId,
-        ids,
-        Object.values(changed_profiles).map((p) => ({ id: p.userId, displayName: p.displayName || null, zaloName: p.zaloName || null, avatar: p.avatar || null })),
-      )
-      changed = true
+      try {
+        const mini = await this.zalo.miniProfiles(accountId, ids)
+        const entries = mini && typeof mini === 'object' ? (Array.isArray(mini) ? mini : Object.entries(mini)) : []
+        const profiles: Profile[] = entries
+          .map((item) => {
+            const [uid, p] = Array.isArray(item) ? [item[0], item[1] as MiniProfile] : [(item as MiniProfile).userId ?? '', item as MiniProfile]
+            return {
+              id: p?.userId || uid,
+              displayName: p?.displayName || p?.zaloName || null,
+              zaloName: p?.zaloName || null,
+              avatar: p?.avatar || null,
+            }
+          })
+          .filter((p) => Boolean(p.id))
+        this.contacts.saveProfiles(accountId, ids, profiles)
+        broadcast({ type: 'threads', accountId })
+        await Bun.sleep(PROFILE_BATCH_GAP_MS)
+      } catch (err) {
+        this.contacts.saveProfiles(accountId, ids, [])
+        throw err
+      }
     }
-    return changed
   }
 
-  private scheduleProfileRefresh(accountId: string) {
+  scheduleProfileRefresh(accountId: string, delay = PROFILE_FETCH_DELAY_MS) {
+    const cooldown = this.profileCooldownUntil.get(accountId) ?? 0
+    if (Date.now() < cooldown) return
     if (this.profileTimers.has(accountId)) return
     this.profileTimers.set(
       accountId,
-      setTimeout(() => {
-        this.profileTimers.delete(accountId)
-        const api = this.zalo.getApi(accountId)
-        if (!api) return
-        this.refreshProfiles(accountId, api)
-          .then((changed) => changed && broadcast({ type: 'threads', accountId }))
-          .catch((err) => logger.error('fetch profiles', { accountId, err }))
-      }, PROFILE_FETCH_DELAY_MS),
+      setTimeout(async () => {
+        try {
+          if (this.zalo.getApi(accountId)) await this.refreshProfiles(accountId)
+          this.profileTimers.delete(accountId)
+        } catch (err: unknown) {
+          logger.error('fetch profiles', { accountId, err })
+          this.profileTimers.delete(accountId)
+          const isRateLimit = (err as { error_code?: number })?.error_code === 221 || String(err).includes('221')
+          const retryDelay = isRateLimit ? PROFILE_RATE_LIMIT_DELAY_MS : Math.min(Math.max(delay * 2, PROFILE_RETRY_DELAY_MS), PROFILE_RETRY_MAX_MS)
+          if (isRateLimit) this.profileCooldownUntil.set(accountId, Date.now() + retryDelay)
+          this.scheduleProfileRefresh(accountId, retryDelay)
+        }
+      }, delay),
     )
   }
 
@@ -175,6 +217,14 @@ export default class ContactService implements IContactService {
       }, GROUP_RESYNC_DELAY_MS),
     )
   }
+}
+
+function groupMembers(group: Partial<GroupInfo>): GroupMember[] {
+  const roles = new Map<string, GroupMember['role']>()
+  for (const id of group.memberIds?.length ? group.memberIds : (group.currentMems ?? []).map((m) => m.id)) roles.set(id, 'member')
+  for (const id of group.adminIds ?? []) roles.set(id, 'admin')
+  if (group.creatorId) roles.set(group.creatorId, 'owner')
+  return [...roles].map(([id, role]) => ({ id, role }))
 }
 
 // ADD/REMOVE/BLOCK mang uid; lời mời mang fromUid/toUid nên phải xem bên nào là mình

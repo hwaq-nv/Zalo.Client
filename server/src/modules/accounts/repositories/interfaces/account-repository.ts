@@ -1,4 +1,4 @@
-import type { Credentials } from 'zca-js'
+import type { Credentials } from '@hwqnq/zca-js'
 import type { Account, AccountState } from '../../../../types'
 
 export default interface IAccountRepository {

@@ -33,10 +33,10 @@ export default class ContactRepository implements IContactRepository {
 
   syncFriends(accountId: string, friends: Friend[]) {
     const upsert = this.db.query(
-      `INSERT INTO users (account_id, id, display_name, zalo_name, avatar, relation, synced_at)
-       VALUES ($accountId, $id, $displayName, $zaloName, $avatar, 'friend', $now)
+      `INSERT INTO users (account_id, id, display_name, zalo_name, avatar, phone, relation, synced_at)
+       VALUES ($accountId, $id, $displayName, $zaloName, $avatar, $phone, 'friend', $now)
        ON CONFLICT (account_id, id) DO UPDATE SET display_name = excluded.display_name, zalo_name = excluded.zalo_name,
-         avatar = excluded.avatar, relation = 'friend', synced_at = excluded.synced_at`,
+         avatar = excluded.avatar, phone = COALESCE(excluded.phone, users.phone), relation = 'friend', synced_at = excluded.synced_at`,
     )
     // Trùng SĐT với người đã có thì gộp vào người đó trước khi gắn theo uid: cách duy nhất gộp khi uid không toàn cục
     const linkByPhone = this.db.query(
@@ -50,9 +50,9 @@ export default class ContactRepository implements IContactRepository {
     const now = Date.now()
     this.db.transaction(() => {
       this.db.query("UPDATE users SET relation = 'none' WHERE account_id = ? AND relation = 'friend'").run(accountId)
-      for (const { phone, ...user } of friends) {
-        upsert.run({ accountId, now, ...user })
-        if (phone) linkByPhone.run({ accountId, id: user.id, phone })
+      for (const friend of friends) {
+        upsert.run({ accountId, now, ...friend })
+        if (friend.phone) linkByPhone.run({ accountId, id: friend.id, phone: friend.phone })
       }
       this.link(accountId)
       for (const friend of friends) if (friend.phone) keepPhone.run({ accountId, id: friend.id, phone: friend.phone })
@@ -84,13 +84,20 @@ export default class ContactRepository implements IContactRepository {
 
   upsertGroups(accountId: string, groups: GroupInfoRow[]) {
     const upsert = this.db.query(
-      `INSERT INTO groups (account_id, id, name, avatar, is_member, version, synced_at) VALUES ($accountId, $id, $name, $avatar, 1, $version, $now)
-       ON CONFLICT (account_id, id) DO UPDATE SET name = excluded.name, avatar = excluded.avatar, is_member = 1,
-         version = excluded.version, synced_at = excluded.synced_at`,
+      `INSERT INTO groups (account_id, id, name, avatar, description, creator_id, total_member, is_member, version, synced_at)
+       VALUES ($accountId, $id, $name, $avatar, $description, $creatorId, $totalMember, 1, $version, $now)
+       ON CONFLICT (account_id, id) DO UPDATE SET name = excluded.name, avatar = excluded.avatar, description = excluded.description,
+         creator_id = excluded.creator_id, total_member = excluded.total_member, is_member = 1, version = excluded.version, synced_at = excluded.synced_at`,
     )
+    const clearMembers = this.db.query('DELETE FROM group_members WHERE account_id = ? AND group_id = ?')
+    const addMember = this.db.query('INSERT INTO group_members (account_id, group_id, user_id, role) VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET role = excluded.role')
     const now = Date.now()
     this.db.transaction(() => {
-      for (const group of groups) upsert.run({ accountId, now, ...group })
+      for (const { members, ...group } of groups) {
+        upsert.run({ accountId, now, ...group })
+        clearMembers.run(accountId, group.id)
+        for (const { id, role } of members) addMember.run(accountId, group.id, id, role)
+      }
     })()
   }
 
@@ -118,40 +125,53 @@ export default class ContactRepository implements IContactRepository {
   }
 
   missingProfiles(accountId: string, limit: number) {
-    const rows = this.db.query('SELECT id FROM users WHERE account_id = ? AND synced_at IS NULL LIMIT ?').all(accountId, limit) as { id: string }[]
+    const rows = this.db
+      .query(
+        `SELECT u.id FROM users u LEFT JOIN threads t ON t.account_id = u.account_id AND t.id = u.id AND t.type = 0
+         WHERE u.account_id = ? AND u.synced_at IS NULL ORDER BY (t.id IS NOT NULL) DESC, t.last_msg_at DESC NULLS LAST LIMIT ?`,
+      )
+      .all(accountId, limit) as { id: string }[]
     return rows.map((r) => r.id)
   }
 
   saveProfiles(accountId: string, askedIds: string[], profiles: Profile[]) {
-    const markAsked = this.db.query('UPDATE users SET synced_at = ? WHERE account_id = ? AND id = ?')
-    // Zalo bỏ trống trường nào thì giữ giá trị đang có (vd tên lấy từ tin nhắn)
+    const markAsked = this.db.query(
+      `INSERT INTO users (account_id, id, synced_at) VALUES ($accountId, $id, $now)
+       ON CONFLICT (account_id, id) DO UPDATE SET synced_at = excluded.synced_at`,
+    )
     const saveProfile = this.db.query(
-      `UPDATE users SET display_name = COALESCE($displayName, display_name), zalo_name = COALESCE($zaloName, zalo_name),
-         avatar = COALESCE($avatar, avatar)
-       WHERE account_id = $accountId AND id = $id`,
+      `INSERT INTO users (account_id, id, display_name, zalo_name, avatar, phone, synced_at)
+       VALUES ($accountId, $id, $displayName, $zaloName, $avatar, $phone, $now)
+       ON CONFLICT (account_id, id) DO UPDATE SET
+         display_name = COALESCE(excluded.display_name, users.display_name),
+         zalo_name = COALESCE(excluded.zalo_name, users.zalo_name),
+         avatar = COALESCE(excluded.avatar, users.avatar),
+         phone = COALESCE(excluded.phone, users.phone),
+         synced_at = excluded.synced_at`,
     )
     const now = Date.now()
     this.db.transaction(() => {
-      for (const id of askedIds) markAsked.run(now, accountId, id)
-      for (const profile of profiles) saveProfile.run({ accountId, ...profile })
+      for (const id of askedIds) markAsked.run({ accountId, id, now })
+      for (const profile of profiles) saveProfile.run({ accountId, now, phone: null, ...profile })
     })()
   }
 
   // Ghép theo uid luôn an toàn: uid toàn cục thì hai nick tự gộp về một người, không toàn cục thì không bao giờ trùng
   link(accountId: string, uid?: string) {
     const params = { accountId, uid: uid ?? null, now: Date.now() }
+    const userFilter = uid === undefined ? '' : 'AND id = $uid'
     this.db
       .query(
         `INSERT INTO contacts (zalo_uid, created_at)
          SELECT id, $now FROM users
-         WHERE account_id = $accountId AND ($uid IS NULL OR id = $uid) AND contact_id IS NULL AND ${LINKABLE_USER_FILTER}
+         WHERE account_id = $accountId ${userFilter} AND contact_id IS NULL AND ${LINKABLE_USER_FILTER}
          ON CONFLICT (zalo_uid) DO NOTHING`,
       )
       .run(params)
     this.db
       .query(
         `UPDATE users SET contact_id = (SELECT c.id FROM contacts c WHERE c.zalo_uid = users.id)
-         WHERE account_id = $accountId AND ($uid IS NULL OR id = $uid) AND contact_id IS NULL AND ${LINKABLE_USER_FILTER}`,
+         WHERE account_id = $accountId ${userFilter} AND contact_id IS NULL AND ${LINKABLE_USER_FILTER}`,
       )
       .run({ accountId: params.accountId, uid: params.uid })
   }
@@ -186,6 +206,10 @@ export default class ContactRepository implements IContactRepository {
          ORDER BY a.created_at, a.rowid`,
       )
       .all(id) as ContactLink[]
+  }
+
+  userByPhone(accountId: string, phone: string) {
+    return (this.db.query('SELECT id FROM users WHERE account_id = ? AND phone = ?').get(accountId, phone) as { id: string } | null)?.id
   }
 
   phoneOwner(phone: string) {
